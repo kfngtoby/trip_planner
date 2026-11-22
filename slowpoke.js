@@ -2,7 +2,7 @@
 /* A small Slowpoke that ambles around the top bar on its own.
    Drag it anywhere; it carries on wandering from where you drop it. Tap it for a hop. */
 (function () {
-  const W = 42, H = 54;                       // sprite size in px
+  const W = 72, H = 28;                       // sprite size in px
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const rnd = (a, b) => a + Math.random() * (b - a);
   const clamp = (v, a, b) => Math.min(Math.max(v, a), Math.max(a, b));

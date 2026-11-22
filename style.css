@@ -355,7 +355,7 @@ label.full{display:block;margin-bottom:10px}
 @media (min-width:760px){.view-map{grid-template-rows:auto auto auto auto auto 1fr}}
 
 /* Slowpoke: wanders along the top, drag to move */
-#slowpoke{position:fixed;left:0;top:0;z-index:40;width:42px;height:54px;touch-action:none;cursor:grab;-webkit-user-select:none;user-select:none;will-change:transform;filter:drop-shadow(0 2px 2px #0003)}
+#slowpoke{position:fixed;left:0;top:0;z-index:40;width:72px;height:28px;touch-action:none;cursor:grab;-webkit-user-select:none;user-select:none;will-change:transform;filter:drop-shadow(0 2px 2px #0003)}
 #slowpoke.held{cursor:grabbing}
 #slowpoke.held .sp-img{transform:translateY(-4px) rotate(-6deg)}
 #slowpoke .sp-flip{width:100%;height:100%}
@@ -586,3 +586,6 @@ label.check{display:flex;gap:8px;align-items:flex-start}
 .overview-controls,.overview-styles{display:flex;gap:6px}.overview-controls{padding:8px;overflow-x:auto}.overview-controls button,.overview-styles button{min-height:44px;white-space:nowrap}.overview-styles button[aria-pressed=true]{background:#243d67;color:white}.overview-styles .map-btn{width:auto;padding-inline:8px}.map-ctrls{flex-wrap:wrap;max-width:calc(100% - 16px)}
 
 .discover-quick{display:flex;align-items:center;gap:8px;padding:0 8px;flex-wrap:wrap}.discover-quick small{flex:1 1 100%;color:var(--muted)}.discover-quick .discover-buttons{padding:0 0 8px;flex:1 1 100%}.discover-quick .discover-buttons button{flex:1}
+
+.disc-chips{display:flex;flex-wrap:wrap;gap:6px}.disc-chips button{min-height:36px;padding:0 12px}.disc-chips button[aria-pressed=true]{font-weight:700;border-color:currentColor;box-shadow:inset 0 0 0 1px currentColor}
+.disc-map{height:200px;border-radius:12px;overflow:hidden}.disc-pin{background:none;border:0;box-shadow:none;color:#fff;font-weight:700;padding:0}.disc-pin:before{display:none}article.disc-on{outline:2px solid #e0528f;border-radius:10px}

@@ -270,7 +270,8 @@ function addShops(list) {
       chain: r.chain ? normName(r.chain) : id, source: String(r.source || '小红书').slice(0, 20) });
     added++;
   }
-  localStorage.setItem(EXTRA_KEY, JSON.stringify([...keep.values()].slice(0, 2000)));
+  try { localStorage.setItem(EXTRA_KEY, JSON.stringify([...keep.values()].slice(0, 2000))); }
+  catch { toast('Could not save. Browser storage is full or blocked (private mode?).'); return 0; }
   return added;
 }
 async function importShopList(input) {

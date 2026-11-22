@@ -1,8 +1,11 @@
 // Caches the app so it opens without signal (e.g. on a train in Japan).
-// Bump VERSION whenever you deploy changes; users get the new version on the next launch.
-const VERSION = 'trips-v28-map5';
-const SHELL = ['./', 'index.html', 'style.css?v=28-map5', 'locale.js?v=28-map5', 'seed.js?v=28-map5', 'seed-research.js?v=28-map5', 'tz.js?v=28-map5', 'store.js?v=28-map5',
-  'fashion-catalog.js?v=28-map5', 'places.js?v=28-map5', 'reco.js?v=28-map5', 'fx.js?v=28-map5', 'receipt.js?v=28-map5', 'locate.js?v=28-map5', 'splitter.js?v=28-map5', 'firebase-config.js?v=28-map5', 'sync.js?v=28-map5', 'ai.js?v=28-map5', 'plan.js?v=28-map5', 'discovery.js?v=28-map5', 'app.js?v=28-map5', 'slowpoke.js?v=28-map5', 'manifest.webmanifest'];
+// Deploy: bump V here AND the ?v= ids in index.html (same value), e.g. with: sed -i 's/29-food7/NEW/g' sw.js index.html
+const V = '29-food7';
+const VERSION = 'trips-v' + V;
+const q = f => f + '?v=' + V;
+const SHELL = ['./', 'index.html', 'manifest.webmanifest', q('style.css'),
+  ...['locale', 'seed', 'seed-research', 'tz', 'store', 'fashion-catalog', 'places', 'reco', 'fx', 'receipt', 'locate', 'splitter',
+    'firebase-config', 'sync', 'ai', 'plan', 'discovery', 'app', 'slowpoke'].map(n => q(n + '.js'))];
 const OPTIONAL = ['icons/slowpoke.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'];
@@ -21,9 +24,11 @@ self.addEventListener('fetch', e => {
     e.respondWith(caches.open('tiles-v2').then(async c => {
       const hit = await c.match(e.request);
       if (hit) return hit;
-      const res = await fetch(e.request);
-      if (res.ok) c.put(e.request, res.clone());
-      return res;
+      try {
+        const res = await fetch(e.request);
+        if (res.ok) { c.put(e.request, res.clone()); c.keys().then(ks => ks.length > 600 && Promise.all(ks.slice(0, ks.length - 500).map(k => c.delete(k)))); }
+        return res;
+      } catch { return Response.error(); }
     }));
     return;
   }
@@ -31,16 +36,17 @@ self.addEventListener('fetch', e => {
   if (url.origin === location.origin && (e.request.mode === 'navigate' || url.pathname.endsWith('/') || url.pathname.endsWith('/index.html'))) {
     e.respondWith(caches.open(VERSION).then(async c => {
       try { const res = await fetch(e.request, { cache: 'no-cache' }); if (res.ok) c.put(e.request, res.clone()); return res; }
-      catch { return (await c.match(e.request, { ignoreSearch: true })) || (await c.match('index.html')) || (await c.match('./')); }
+      catch { return (await c.match(e.request, { ignoreSearch: true })) || (await c.match('index.html')) || (await c.match('./')) || Response.error(); }
     }));
     return;
   }
   // App files: serve from cache, refresh in the background.
   if (url.origin === location.origin || url.hostname === 'cdnjs.cloudflare.com') {
     e.respondWith(caches.open(VERSION).then(async c => {
-      const hit = await c.match(e.request, { ignoreSearch: url.origin === location.origin && url.pathname.endsWith('/') });
-      const net = fetch(e.request).then(res => { if (res.ok) c.put(e.request, res.clone()); return res; }).catch(() => hit);
-      return hit || net;
+      const hit = await c.match(e.request);
+      const net = fetch(e.request).then(res => { if (res.ok) c.put(e.request, res.clone()); return res; });
+      if (hit) { net.catch(() => {}); return hit; }
+      return net.catch(() => Response.error());
     }));
   }
 });
