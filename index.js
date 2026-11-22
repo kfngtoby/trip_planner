@@ -3,11 +3,13 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
+const { buildUrl, parseList, parseDetail, isShopUrl } = require('./tabelog');
 admin.initializeApp();
 
 const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY');
 const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash'; // change if Google retires this name
 const DAILY_LIMIT = Number(process.env.AI_DAILY_LIMIT || 60);
+const TABELOG_DAILY_LIMIT = Number(process.env.TABELOG_DAILY_LIMIT || 300); // page fetches per user per day
 const ALLOWED = (process.env.ALLOWED_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean); // empty = any signed-in user
 
 async function gemini(parts, { json = false, schema, temperature = 0.2 } = {}) {
@@ -21,15 +23,16 @@ async function gemini(parts, { json = false, schema, temperature = 0.2 } = {}) {
   return (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
 }
 
-async function countUse(uid) {
-  const day = new Date().toISOString().slice(0, 10), ref = admin.firestore().doc(`users/${uid}/usage/${day}`);
+async function countUse(uid, kind = '', limit = DAILY_LIMIT) {
+  const day = new Date().toISOString().slice(0, 10), ref = admin.firestore().doc(`users/${uid}/usage/${day}${kind}`);
   await admin.firestore().runTransaction(async tx => {
     const n = (await tx.get(ref)).data()?.n || 0;
-    if (n >= DAILY_LIMIT) throw new HttpsError('resource-exhausted', 'Daily AI limit reached.');
+    if (n >= limit) throw new HttpsError('resource-exhausted', kind ? 'Daily search limit reached.' : 'Daily AI limit reached.');
     tx.set(ref, { n: n + 1 });
   });
 }
 
+const TB_CACHE = new Map();
 const PLACES_SCHEMA = { type: 'OBJECT', properties: { places: { type: 'ARRAY', items: { type: 'OBJECT', properties: {
   name: { type: 'STRING' }, jp: { type: 'STRING' }, address: { type: 'STRING' }, area: { type: 'STRING' }, note: { type: 'STRING' } }, required: ['name'] } } }, required: ['places'] };
 
@@ -45,6 +48,46 @@ exports.ai = onCall({ secrets: [GEMINI_API_KEY], region: 'us-central1', timeoutS
   if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in first.');
   if (ALLOWED.length && !ALLOWED.includes((req.auth.token.email || '').toLowerCase())) throw new HttpsError('permission-denied', 'This account is not allowed to use AI.');
   const d = req.data || {};
+
+  // Live Tabelog search: one list page per call, fetched on demand, cached 10 minutes. Not AI, so it has its own daily counter.
+  if (d.task === 'tabelog_search') {
+    const area = String(d.area || '').trim().slice(0, 40), keyword = String(d.keyword || '').trim().slice(0, 40), page = Math.min(Math.max(parseInt(d.page, 10) || 1, 1), 10);
+    if (!area) throw new HttpsError('invalid-argument', 'Enter an area.');
+    const url = buildUrl(area, keyword, page), hit = TB_CACHE.get(url);
+    if (hit && Date.now() - hit.t < 600000) return hit.v;
+    await countUse(req.auth.uid, '-tb', TABELOG_DAILY_LIMIT);
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 15000);
+    let r;
+    try { r = await fetch(url, { signal: ctl.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TripCompanion personal trip planner)', 'Accept-Language': 'ja,en;q=0.8', Accept: 'text/html' } }); }
+    catch { throw new HttpsError('unavailable', 'Could not reach Tabelog.'); }
+    finally { clearTimeout(timer); }
+    if (r.status === 404) return { items: [], end: true, url };
+    if (!r.ok) { console.error('tabelog', r.status); throw new HttpsError('unavailable', r.status === 403 || r.status === 429 ? 'Tabelog refused the request. Try again later.' : 'Tabelog returned an error.'); }
+    const items = parseList((await r.text()).slice(0, 3_000_000));
+    const v = { items, end: items.length < 10, url };
+    if (TB_CACHE.size > 200) TB_CACHE.delete(TB_CACHE.keys().next().value);
+    if (items.length) TB_CACHE.set(url, { t: Date.now(), v });
+    return v;
+  }
+
+  // Shop page, for the address only. Cached 24 hours.
+  if (d.task === 'tabelog_detail') {
+    const url = String(d.link || '').split('#')[0].split('?')[0];
+    if (!isShopUrl(url)) throw new HttpsError('invalid-argument', 'Not a Tabelog shop page.');
+    const hit = TB_CACHE.get(url);
+    if (hit && Date.now() - hit.t < 86400000) return hit.v;
+    await countUse(req.auth.uid, '-tb', TABELOG_DAILY_LIMIT);
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 15000);
+    let r;
+    try { r = await fetch(url, { signal: ctl.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TripCompanion personal trip planner)', 'Accept-Language': 'ja,en;q=0.8', Accept: 'text/html' } }); }
+    catch { throw new HttpsError('unavailable', 'Could not reach Tabelog.'); }
+    finally { clearTimeout(timer); }
+    if (!r.ok) throw new HttpsError('unavailable', 'Tabelog returned an error.');
+    const v = parseDetail((await r.text()).slice(0, 3_000_000));
+    if (v.address) { if (TB_CACHE.size > 400) TB_CACHE.delete(TB_CACHE.keys().next().value); TB_CACHE.set(url, { t: Date.now(), v }); }
+    return v;
+  }
+
   await countUse(req.auth.uid);
 
   if (d.task === 'extract_places') {

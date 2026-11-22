@@ -14,6 +14,8 @@
   root.innerHTML = '<div class="sp-flip"><img class="sp-img" src="icons/slowpoke.png" alt="" draggable="false"></div>';
   document.body.appendChild(root);
   const flip = root.querySelector('.sp-flip');
+  // If the mascot image can't load (missing upload, stale cache), hide it instead of showing a broken-image box.
+  root.querySelector('.sp-img').addEventListener('error', () => root.remove());
 
   let x = 0, y = 0, homeY = 0, dragging = false, timer = 0, facingRight = false;
 

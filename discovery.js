@@ -25,7 +25,6 @@ const discMatch=(p,type,ref='')=>{
 function discoveryButtons(d){return `<div class="discover-buttons"><button type="button" data-discovery="food" data-day="${esc(d.id)}">${discoveryLabel('Find food','找美食')}</button><button type="button" data-discovery="shop" data-day="${esc(d.id)}">${discoveryLabel('Find shopping','找店舖')}</button></div>`;}
 const discBtn=(act,text)=>`<button type="button" data-disc="${act}">${esc(text)}</button>`;
 const discOptions=(rows,value)=>rows.map(([id,en,zh])=>`<option value="${esc(id)}" ${id===value?'selected':''}>${esc(zh?discoveryLabel(en,zh):en)}</option>`).join('');
-const discStarter=['Himeji Mentetsu','Shinsei Ken','Himeji Tanmen','Men Dokoro Nakayama','Menya 636 Himeji Ten','Ramen Maruju'].map((name,i)=>({id:'himeji-ramen-'+i,name,city:'Himeji',type:'ramen',source:'Himeji starter catalog',link:i===4?'https://tabelog.com/en/hyogo/A2805/A280501/28026033/':i===5?'https://tabelog.com/en/hyogo/A2805/A280501/28031866/':'https://tabelog.com/en/hyogo/A2805/A280501/rstLst/MC/'}));
 const discArea=s=>discNorm(s).replaceAll('姫路','himeji').replaceAll('姬路','himeji');
 const discImports=()=>{try{return JSON.parse(localStorage.getItem('trip-discovery-v1'))||[]}catch{return []}};
 const discLink=(url,text)=>`<a class="btn" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(text)}</a>`;
@@ -88,13 +87,28 @@ function discCachePut(k,rows){
  Object.keys(c).sort((a,b)=>c[b].t-c[a].t).slice(DISC_MAX).forEach(x=>delete c[x]);
  try{localStorage.setItem(DISC_CACHE,JSON.stringify(c));}catch{try{localStorage.setItem(DISC_CACHE,JSON.stringify({[k]:c[k]}));}catch{}}
 }
+/* Live Tabelog search (food). Nothing is loaded until the user presses Search; each "next batch" fetches the next page on demand.
+   Needs sign-in because the page is read by the Cloud Function (browsers cannot read tabelog.com directly). */
+const tbUrl=(area,kw)=>'https://tabelog.com/rstLst/?'+new URLSearchParams({vs:'1',sa:area||'',sk:kw||'',sw:'',SrtT:'rt'});
+async function discJaArea(area,signal){ // Tabelog matches Japanese area names, so turn "Himeji" / 姬路 into 姫路
+ if(/[\u3040-\u30ff]/.test(area))return area;
+ try{const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=jp&accept-language=ja&q='+encodeURIComponent(area),{signal});
+  if(r.ok){const [h]=await r.json();const n=h&&(h.name||'').replace(/[市区町村]$/,'');if(n)return n;}}catch(e){if(signal?.aborted)throw e;}
+ return area;
+}
+async function discJaReverse(lat,lon,signal){
+ try{const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=14&accept-language=ja&lat=${lat}&lon=${lon}`,{signal});
+  if(r.ok){const a=(await r.json()).address||{};return (a.suburb||a.city_district||a.neighbourhood||a.city||a.town||a.village||'').replace(/[市区町村]$/,'');}}catch(e){if(signal?.aborted)throw e;}
+ return '';
+}
 function discover(tr, dayId, mode){
  const d=tr.days.find(x=>x.id===dayId);if(!d)return;
  const z=discoveryLabel, food=mode==='food', title=food?z('Find food','找美食'):z('Find shopping','找店舖');
  const anchorSpots=daySpots(tr,d).filter(hasCoords), first=anchorSpots[0];
- let area=first?.city||((d.place||'').match(/(?:→|➜)\s*(.+)$/)?.[1])||d.place||'', point=first||null, anchor=first?.name||area, type='any', ref='', radius=2, sort='match', rating='prefer', budget='', pool=[], batch=[], seen=[], seq=0, status='', controller=null, dmap=null, game='';
+ let area=first?.city||((d.place||'').match(/(?:→|➜)\s*(.+)$/)?.[1])||d.place||'', point=first||null, anchor=first?.name||area, type='any', ref='', radius=2, sort='match', rating='prefer', budget='', pool=[], batch=[], seen=[], seq=0, status='', controller=null, dmap=null, game='', tb={buf:[],page:0,end:false,ja:''};
+  if(food)status=z('Enter a location and press Search.','請輸入地點並按「搜尋」。');
  const sheet=$('#sheet'), body=$('#sheet-body');
- const local=()=>[...discImports().filter(p=>p.mode===mode&&!p.bookmark),...tr.spots.filter(p=>food?p.cat==='food':['fashion','pokemon','shopping'].includes(p.cat)).map(p=>({...p,source:z('Trip','行程'),type:p.cat==='pokemon'?'tcg':p.cat==='fashion'?'clothes':p.type})),...(!food?allCatalog().map(p=>({...p,source:p.source||z('Fashion catalog','服飾目錄'),type:'clothes'})):discStarter)];
+ const local=()=>[...discImports().filter(p=>p.mode===mode&&!p.bookmark),...tr.spots.filter(p=>food?p.cat==='food':['fashion','pokemon','shopping'].includes(p.cat)).map(p=>({...p,source:z('Trip','行程'),type:p.cat==='pokemon'?'tcg':p.cat==='fashion'?'clothes':p.type})),...(!food?allCatalog().map(p=>({...p,source:p.source||z('Fashion catalog','服飾目錄'),type:'clothes'})):[])];
  function ranked(){
   const source=[...pool],fix=discFixAll(),unique=[];
   for(const q0 of source){const f=fix[discId(q0)]||{};if(f.hide)continue;const p={...q0,...(f.score?{score:f.score}:{}),...(f.budget?{budget:f.budget}:{})};if(!discMatch(p,type||'any',ref))continue;const km=point&&hasCoords(p)?kmBetween(point,p):null;
@@ -118,9 +132,9 @@ function discover(tr, dayId, mode){
    <div class="disc-chips">${discoveryTypes[mode].map(([id,en,zh])=>`<button type="button" data-disc="type:${id}" aria-pressed="${id===type}">${esc(z(en,zh))}</button>`).join('')}</div>
    ${type==='tcg'?`<div class="disc-chips">${discGames.map(([id,en,zh])=>`<button type="button" data-disc="game:${esc(id)}" aria-pressed="${id===game}">${esc(z(en,zh))}</button>`).join('')}</div>`:''}
    <p role="status">${esc(status)}</p><div id="disc-map" class="disc-map" hidden></div>
-   ${batch.map((p,i)=>`<article id="disc-c${i}"><strong>${i+1}. ${esc(p.name)}</strong>${p.jp&&p.jp!==p.name?`<small>${esc(p.jp)}</small>`:''}${p.dayHours||p.hours?`<small>${p.openDay===false?'⛔':'🕒'} ${esc(p.dayHours||p.hours)}</small>`:''}${p.bldg||p.floor?`<small>🏢 ${esc([p.bldg,p.floor?(/^-?\d+$/.test(p.floor)?p.floor+'F':p.floor):''].filter(Boolean).join(' · '))}</small>`:''}<small>${esc([p.label,p.source].filter(Boolean).join(' · '))}${p.km!=null?' · '+p.km.toFixed(1)+' km':''}${p.score?' · Tabelog '+Number(p.score).toFixed(1)+' ('+z('user-entered','用戶輸入')+')':''}</small><div class="disc-row">${discBtn('pick:'+i,z('Add to day','加入行程'))} ${discLink(gmapsDirectionsUrl(p),z('Maps','地圖'))} ${p.link?discLink(p.link,z('Official page','官方頁面')):discLink(food?web('site:tabelog.com '+(p.jp||p.name)+' '+area):web((p.jp||p.name)+' '+area+' 公式'),food?'Tabelog':z('Search','搜尋'))} ${type==='tcg'?discLink(web((p.jp||p.name)+' '+area+' '+(game||'ポケカ')+' 在庫'),z('Stock check','在庫確認')):''} <button type="button" data-disc="hide:${i}" aria-label="${z('Hide','隱藏')}">✕</button></div>${food?`<details><summary>${z('More','更多')}</summary><div class="disc-row">${discLink(web('site:xiaohongshu.com '+(p.jp||p.name)+' '+area),'小紅書')} ${discBtn('score:'+i,z('Set score','輸入評分'))}</div></details>`:''}</article>`).join('')}
-   ${discBtn('more',z('Not interested · Another batch','不感興趣・下一批'))}
-   <details><summary>${z('More','更多')}</summary><div class="disc-row">${food?discLink(web('site:tabelog.com '+query),z('Check Tabelog','查閱食べログ')):discLink(web(query),z('Search web','網頁搜尋'))} ${discBtn('xhs',z('Search 小紅書','搜尋小紅書'))} ${discBtn('copy',z('Copy search','複製搜尋詞'))} ${discBtn('import',z('Import a place','匯入地點'))}</div>${saved.length?`<details><summary>${z('Saved source links','已儲存來源連結')}</summary>${saved.map(p=>discLink(p.link,p.link)).join('')}</details>`:''}</details></div>`;
+   ${batch.map((p,i)=>`<article id="disc-c${i}"><strong>${i+1}. ${esc(p.name)}</strong>${p.jp&&p.jp!==p.name?`<small>${esc(p.jp)}</small>`:''}${p.dayHours||p.hours?`<small>${p.openDay===false?'⛔':'🕒'} ${esc(p.dayHours||p.hours)}</small>`:''}${p.bldg||p.floor?`<small>🏢 ${esc([p.bldg,p.floor?(/^-?\d+$/.test(p.floor)?p.floor+'F':p.floor):''].filter(Boolean).join(' · '))}</small>`:''}<small>${esc([p.label,p.source].filter(Boolean).join(' · '))}${p.km!=null?' · '+p.km.toFixed(1)+' km':''}${p.score?' · Tabelog '+Number(p.score).toFixed(1)+(p.live?(p.reviews?' ('+p.reviews+')':''):' ('+z('user-entered','用戶輸入')+')'):''}</small>${p.live?`${p.genre?`<small>🍽 ${esc(p.genre)}${p.station?' · '+esc(p.station):''}</small>`:''}<small>📍 ${p.address?esc(p.address):z('Loading address…','載入地址…')}</small>`:''}${p.budgetText?`<small>💴 ${esc(p.budgetText)}</small>`:''}<div class="disc-row">${discBtn('pick:'+i,z('Add to day','加入行程'))} ${discLink(p.address?'https://www.google.com/maps/dir/?api=1&travelmode=transit&destination='+encodeURIComponent(p.address+' '+p.name):gmapsDirectionsUrl(p),z('Maps','地圖'))} ${p.link?discLink(p.link,p.live?'Tabelog':z('Official page','官方頁面')):discLink(food?web('site:tabelog.com '+(p.jp||p.name)+' '+area):web((p.jp||p.name)+' '+area+' 公式'),food?'Tabelog':z('Search','搜尋'))} ${type==='tcg'?discLink(web((p.jp||p.name)+' '+area+' '+(game||'ポケカ')+' 在庫'),z('Stock check','在庫確認')):''} <button type="button" data-disc="hide:${i}" aria-label="${z('Hide','隱藏')}">✕</button></div>${food?`<details><summary>${z('More','更多')}</summary><div class="disc-row">${discLink(web('site:xiaohongshu.com '+(p.jp||p.name)+' '+area),'小紅書')} ${discBtn('score:'+i,z('Set score','輸入評分'))}</div></details>`:''}</article>`).join('')}
+   ${(!food||batch.length)?discBtn('more',z('Not interested · Another batch','不感興趣・下一批')):''}
+   <details><summary>${z('More','更多')}</summary><div class="disc-row">${food?discLink(tbUrl(tb.ja||area,tbKeyword()),z('Open on Tabelog','在食べログ開啟')):discLink(web(query),z('Search web','網頁搜尋'))} ${discBtn('xhs',z('Search 小紅書','搜尋小紅書'))} ${discBtn('copy',z('Copy search','複製搜尋詞'))} ${discBtn('import',z('Import a place','匯入地點'))}</div>${saved.length?`<details><summary>${z('Saved source links','已儲存來源連結')}</summary>${saved.map(p=>discLink(p.link,p.link)).join('')}</details>`:''}</details></div>`;
   drawMap();
  }
  function drawMap(){
@@ -133,6 +147,41 @@ function discover(tr, dayId, mode){
    m.on('click',()=>{const c=body.querySelector('#disc-c'+i);c?.scrollIntoView({block:'nearest',behavior:'smooth'});body.querySelectorAll('article').forEach(a=>a.classList.toggle('disc-on',a===c));});ll.push([p.lat,p.lon]);});
   dmap.fitBounds(ll,{padding:[24,24],maxZoom:16});setTimeout(()=>dmap&&dmap.invalidateSize(),150);
  }
+  const tbKeyword=()=>discJP[type]||'';
+  const tbNote=p=>[p.genre,p.station,p.address,p.budgetText&&z('Budget ','預算 ')+p.budgetText].filter(Boolean).join(' · ');
+  async function tbAddresses(list,valid){ // fills in addresses from each shop's Tabelog page, a few at a time, then redraws
+   await Promise.all(list.filter(p=>p.live&&!p.address&&!p.addrTried).map(async p=>{
+    p.addrTried=1;try{const r=await aiCall('tabelog_detail',{link:p.link});if(r.address){p.address=r.address;p.note=tbNote(p);}}catch{}
+    if(valid()&&batch.includes(p))render();
+   }));
+  }
+  const tbReset=()=>{tb={buf:[],page:0,end:false,ja:''};batch=[];seen=[];};
+  async function tabelogSearch(fresh){
+   controller?.abort();controller=new AbortController();const signal=controller.signal,n=++seq,valid=()=>n===seq&&sheet.open&&sheetHandlers===handlers;
+   if(fresh)tbReset();
+   if(!area){status=z('Enter an area or station first.','請先輸入地區或車站。');render();return;}
+   if(!aiAvailable()){status=z('Live Tabelog search needs sign-in (top of My trips). You can open the same search on Tabelog below.','即時食べログ搜尋需要登入（我的行程頂部）。可用下方連結在食べログ開啟相同搜尋。');render();return;}
+   status=z('Searching Tabelog…','正在搜尋食べログ…');render();
+   try{
+    if(!tb.ja){tb.ja=await discJaArea(area,signal);if(!valid())return;}
+    const fix=discFixAll(),next5=[];
+    while(next5.length<5){
+     if(!tb.buf.length){
+      if(tb.end||tb.page>=10)break;
+      const r=await aiCall('tabelog_search',{area:tb.ja,keyword:tbKeyword(),page:tb.page+1});if(!valid())return;
+      tb.page++;const items=r.items||[];if(r.end||!items.length)tb.end=true;
+      tb.buf.push(...items.map(i=>({id:'tb:'+i.link,name:i.name,jp:i.name,link:i.link,score:i.score,reviews:i.reviews,label:i.label,station:i.station,genre:i.genre,budgetText:i.budget,
+       note:tbNote(i),source:'Tabelog',live:1,city:area,type:type==='any'?'':type}))
+       .filter(p=>!seen.some(q=>q.link===p.link)&&!tb.buf.some(q=>q.link===p.link)));
+      continue;
+     }
+     const p=tb.buf.shift();if(fix[discId(p)]?.hide)continue;next5.push(p);
+    }
+    batch=next5;seen.push(...batch);const batchNow=batch;
+    status=batch.length?z(`Tabelog · page ${tb.page}`,`食べログ · 第 ${tb.page} 頁`):(seen.length?z('No more results. Try another area or type.','沒有更多結果，可換地區或類型。'):z('No results. Tabelog may have changed its page layout; try the link below.','沒有結果。食べログ頁面可能已更改，請試用下方連結。'));
+    render();tbAddresses(batchNow,valid);
+   }catch(e){if(!valid())return;status=(e.message||'Search failed')+' · '+z('You can open the same search on Tabelog below.','可用下方連結在食べログ開啟相同搜尋。');render();}
+  }
  async function search(resolve=false){
   if(!type){status=z('Choose a type to begin.','請先選擇類型。');render();return;}
   controller?.abort();controller=new AbortController();const signal=controller.signal,n=++seq;
@@ -151,23 +200,23 @@ function discover(tr, dayId, mode){
    pool=[...local(),...rows];next(true);if(batch.length<3&&radius<6){radius+=2;return search();}status=batch.length?(stale?z('Offline or busy: showing results saved earlier + saved places','離線或伺服器忙碌：顯示較早儲存的結果＋已儲存地點'):z('OpenStreetMap + saved places','OpenStreetMap ＋ 已儲存地點')):z('No matches. Try a wider area or import a place.','沒有結果，可擴大範圍或匯入地點。');render();
   }catch(e){if(!valid())return;status=!area&&!point?z('Enter an area or use Near me.','請輸入地區或使用我的位置。'):z('Live search unavailable. Showing local matches only.','即時搜尋暫不可用，只顯示本機結果。');render();}finally{clearTimeout(timer);}
  }
- const handlers={title,body:'',submit:null,onOpen:()=>{render();setTimeout(()=>search(),0);body.onchange=e=>{
-   const v=e.target.value;switch(e.target.id){case 'disc-stop':{const s=anchorSpots.find(p=>p.id===v);if(!s)return;point=s;anchor=s.name;area=s.city||d.place||'';search();return;}case 'disc-type':type=v;ref='';if(!pool.length||status===z('Looking for nearby places…','搜尋附近地點…')){search();return;}break;case 'disc-ref':ref=v;break;case 'disc-sort':sort=v;break;case 'disc-rating':rating=v;break;case 'disc-budget':budget=v;break;default:return;}
+ const handlers={title,body:'',submit:null,onOpen:()=>{render();if(!food)setTimeout(()=>search(),0);body.onchange=e=>{
+   const v=e.target.value;switch(e.target.id){case 'disc-stop':{const s=anchorSpots.find(p=>p.id===v);if(!s)return;point=s;anchor=s.name;area=s.city||d.place||'';if(food){tbReset();status=z('Press Search.','請按「搜尋」。');render();}else search();return;}case 'disc-type':type=v;ref='';if(!pool.length||status===z('Looking for nearby places…','搜尋附近地點…')){search();return;}break;case 'disc-ref':ref=v;break;case 'disc-sort':sort=v;break;case 'disc-rating':rating=v;break;case 'disc-budget':budget=v;break;default:return;}
    next(true);status=batch.length?'':z('No matches for these filters.','沒有符合篩選條件的地點。');render();
   };body.onclick=e=>{const b=e.target.closest('[data-disc]');if(!b)return;const action=b.dataset.disc;
-   if(action==='find'){const q=body.querySelector('#disc-area').value.trim();const found=discoveryTypes[mode].slice(1).find(([id])=>new RegExp(discTerms[id],'i').test(q));const clean=found?q.replace(new RegExp(discTerms[found[0]],'ig'),'').trim():q.replace(/\b(food|shopping)\b/ig,'').trim();if(found)type=found[0];const changed=clean!==area;if(changed){area=clean;point=null;anchor=area;}search(changed);}
-   if(action.startsWith('type:')){type=action.slice(5);ref='';search();}
+   if(action==='find'){const q=body.querySelector('#disc-area').value.trim();const found=discoveryTypes[mode].slice(1).find(([id])=>new RegExp(discTerms[id],'i').test(q));const clean=found?q.replace(new RegExp(discTerms[found[0]],'ig'),'').trim():q.replace(/\b(food|shopping)\b/ig,'').trim();if(found)type=found[0];const changed=clean!==area;if(changed){area=clean;point=null;anchor=area;}if(food)tabelogSearch(true);else search(changed);}
+   if(action.startsWith('type:')){type=action.slice(5);ref='';if(food){tbReset();status=z('Press Search.','請按「搜尋」。');render();}else search();}
    if(action.startsWith('game:')){game=action.slice(5);next(true);render();}
-   if(action==='widen'){radius=Math.min(12,radius+2);search();}
-   if(action==='more'){next();status=batch.length?'':z('No unseen matches. Widen the area or import a place.','沒有新結果，可擴大範圍或匯入地點。');render();}
-   if(action==='gps'){if(!navigator.geolocation){status=z('Location unavailable. Enter a station instead.','無法定位，請輸入車站。');render();return;}const n=++seq;controller?.abort();status=z('Getting your location…','正在定位…');render();navigator.geolocation.getCurrentPosition(p=>{if(n!==seq||!sheet.open||sheetHandlers!==handlers)return;point={lat:p.coords.latitude,lon:p.coords.longitude};anchor=z('Near me','我的位置');area=cityOfPoint(point.lat,point.lon)||'';search();},err=>{if(n!==seq||!sheet.open||sheetHandlers!==handlers)return;status=({1:z('Location denied. Choose a station or stop.','定位權限遭拒，請選擇車站或行程地點。'),3:z('Location timed out. Try again or choose a station.','定位逾時，請重試或選擇車站。')})[err.code]||z('Location unavailable. Choose a station.','無法定位，請選擇車站。');render();},{timeout:10000,maximumAge:0});}
+   if(action==='widen'&&!food){radius=Math.min(12,radius+2);search();}
+   if(action==='more'){if(food){tabelogSearch(false);return;}next();status=batch.length?'':z('No unseen matches. Widen the area or import a place.','沒有新結果，可擴大範圍或匯入地點。');render();}
+   if(action==='gps'){if(!navigator.geolocation){status=z('Location unavailable. Enter a station instead.','無法定位，請輸入車站。');render();return;}const n=++seq;controller?.abort();status=z('Getting your location…','正在定位…');render();navigator.geolocation.getCurrentPosition(p=>{if(n!==seq||!sheet.open||sheetHandlers!==handlers)return;point={lat:p.coords.latitude,lon:p.coords.longitude};anchor=z('Near me','我的位置');if(food){const here=point;discJaReverse(here.lat,here.lon,controller?.signal).then(a=>{if(n!==seq||!sheet.open||sheetHandlers!==handlers)return;area=a||cityOfPoint(here.lat,here.lon)||'';tbReset();status=area?z('Location set. Press Search.','已定位，請按「搜尋」。'):z('Could not name this place. Type a station.','無法辨識地點，請輸入車站。');render();});return;}area=cityOfPoint(point.lat,point.lon)||'';search();},err=>{if(n!==seq||!sheet.open||sheetHandlers!==handlers)return;status=({1:z('Location denied. Choose a station or stop.','定位權限遭拒，請選擇車站或行程地點。'),3:z('Location timed out. Try again or choose a station.','定位逾時，請重試或選擇車站。')})[err.code]||z('Location unavailable. Choose a station.','無法定位，請選擇車站。');render();},{timeout:10000,maximumAge:0});}
    if(action==='xhs'||action==='xhsapp'){const kw=`${area||anchor} ${discJP[type]||''} ${ref}`.trim();
     if(action==='xhsapp'){try{navigator.clipboard?.writeText(kw);}catch{}location.href='xhsdiscover://search/result?keyword='+encodeURIComponent(kw);return;}
     const row=b.closest('.disc-row'),old=row.nextElementSibling;if(old?.dataset.xhsRow){old.remove();return;}
     const mobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent),W=typeof xhsWeb!=='undefined'?xhsWeb:{google:k=>web('site:xiaohongshu.com '+k)};
     row.insertAdjacentHTML('afterend',`<div class="disc-row" data-xhs-row="1">${mobile?discBtn('xhsapp',z('Open in 小紅書 app','在小紅書 App 打開')):''}${Object.entries({bing:'Bing',google:'Google',baidu:'百度'}).filter(([k])=>W[k]).map(([k,n])=>discLink(W[k](kw),n)).join('')}</div>`);}if(action==='copy'){const q=`${area||anchor} ${discJP[type]||''} ${ref}`.trim();navigator.clipboard?.writeText(q).then(()=>toast(z('Query copied','已複製搜尋詞'))).catch(()=>toast(q));}
    if(action==='import'){controller?.abort();discImport(tr,dayId,mode,area,type);}
-   if(action.startsWith('hide:')||action.startsWith('score:')){const p=batch[Number(action.split(':')[1])];if(p){if(action[0]==='h'){discFixPut(p,{hide:1});toast(z('Hidden','已隱藏'));}else{const v=prompt(z('Tabelog score (0–5)','食べログ評分 (0–5)'),p.score||''),n=Number(v);if(!(v&&n>0&&n<=5))return;discFixPut(p,{score:n});}next(true);status='';render();}}
+   if(action.startsWith('hide:')||action.startsWith('score:')){const p=batch[Number(action.split(':')[1])];if(p){if(action[0]==='h'){discFixPut(p,{hide:1});if(food)batch.splice(Number(action.split(':')[1]),1);toast(z('Hidden','已隱藏'));}else{const v=prompt(z('Tabelog score (0–5)','食べログ評分 (0–5)'),p.score||''),n=Number(v);if(!(v&&n>0&&n<=5))return;discFixPut(p,{score:n});if(food)p.score=n;}if(!food)next(true);status=food?status:'';render();}}
    if(action.startsWith('pick:')){const p=batch[Number(action.split(':')[1])];if(p){controller?.abort();discPick(tr,dayId,mode,{...p,type:p.type||(type==='any'?'':type)});}}
   };}};
  openSheet(handlers);
