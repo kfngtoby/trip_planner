@@ -239,7 +239,6 @@ function undoToast(msg, snap) {
   b.textContent = t('Undo'); b.onclick = () => { Object.assign(tr, structuredClone(snap)); saveDb(); el.hidden = true; renderDaysTab(); };
   el.append(b); el.hidden = false; clearTimeout(toast.timer); toast.timer = setTimeout(() => el.hidden = true, 7000);
 }
-let reorderMode = false;
 const dayCost = (tr, d) => tr.expenses.reduce((n, e) => e.dayId === d.id ? n + e.amount : n, 0);
 function dayStats(tr, d) {
   const pts = d.items.map(it => itemSpot(tr, it)).filter(Boolean), km = pathKm(pts), cost = dayCost(tr, d);
@@ -274,10 +273,6 @@ function moveItem(dayId, itemId, dir) {
   if (i < 0 || i + dir < 0 || i + dir >= d.items.length) return;
   [d.items[i], d.items[i + dir]] = [d.items[i + dir], d.items[i]]; saveDb(); renderDaysTab();
 }
-function dupItem(dayId, itemId) {
-  const d = trip().days.find(x => x.id === dayId), i = d?.items.findIndex(x => x.id === itemId); if (i < 0) return;
-  d.items.splice(i + 1, 0, { ...d.items[i], id: uid('i') }); saveDb(); renderDaysTab(); toast('Saved');
-}
 
 function openSet() {
   const tr = trip();
@@ -296,7 +291,7 @@ function renderDaysTab() {
         <button id="expand-all" class="text-btn" ${allOpen ? 'disabled' : ''}>${t('Expand all')}</button>
         <button id="collapse-all" class="text-btn" ${open.size ? '' : 'disabled'}>${t('Collapse all')}</button>
       </span>
-      <span class="toolbar-group"><button id="reorder" class="text-btn" aria-pressed="${reorderMode}">${reorderMode ? t('Done') : t('Reorder')}</button>${todayDay(tr) ? `<button id="jump-today" class="text-btn">${t('Today')}</button>` : ''}<button id="add-day" class="text-btn">+ ${t('Add day')}</button></span>
+      <span class="toolbar-group">${todayDay(tr) ? `<button id="jump-today" class="text-btn">${t('Today')}</button>` : ''}<button id="add-day" class="text-btn">+ ${t('Add day')}</button></span>
     </div>
     ${(() => { const qd = todayDay(tr) || tr.days.find(d => open.has(d.id)) || tr.days[0]; return qd && typeof discoveryButtons === 'function' ? `<div class="discover-quick"><small class="user-text">${discoveryLabel('Near', '附近')} · Day ${tr.days.indexOf(qd) + 1}${qd.place ? ' · ' + esc(qd.place) : ''}</small>${discoveryButtons(qd)}</div>` : ''; })()}
     ${tzStrip(tr)}
@@ -307,7 +302,6 @@ function renderDaysTab() {
   if (typeof aiWire === 'function') aiWire(tr);
   $('#expand-all').onclick = () => { tr.days.forEach(d => open.add(d.id)); renderDaysTab(); };
   $('#collapse-all').onclick = () => { open.clear(); renderDaysTab(); $('#view').scrollTo({ top: 0 }); };
-  $('#reorder').onclick = () => { reorderMode = !reorderMode; renderDaysTab(); };
   $('#jump-today')?.addEventListener('click', () => { const td = todayDay(tr); open.add(td.id); renderDaysTab(); document.getElementById('day-' + td.id)?.scrollIntoView({ block: 'start' }); });
   $('#add-day').onclick = () => {
     const last = tr.days[tr.days.length - 1];
@@ -333,14 +327,14 @@ function dayCard(tr, d, i, isOpen) {
         const s = it.spotId && tr.spots.find(x => x.id === it.spotId);
         return `${legHtml(tr, d, ix)}<li class="stop">
           <span class="stop-del" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>${t('Remove')}</span>
-          <div class="stop-in ${reorderMode ? 'has-reorder' : ''}" data-edit-item="${esc(d.id)}|${esc(it.id)}" data-stop="${esc(d.id)}|${esc(it.id)}">
+          <div class="stop-in has-reorder" data-edit-item="${esc(d.id)}|${esc(it.id)}" data-stop="${esc(d.id)}|${esc(it.id)}">
           <span class="stop-time user-text">${esc(it.time)}${stopTzHint(tr, d, it)}</span>
           <div class="stop-main">
             <button class="stop-title user-text" data-edit-item="${esc(d.id)}|${esc(it.id)}">${s ? `<span class="cat-badge sm" style="--c:${CATS[s.cat]?.color || color}" title="${esc(CATS[s.cat]?.label || '')}">${catIcon(s.cat, 12)}</span>` : ''}<span>${esc(L(it, 'title') || '—')}</span></button>
             ${it.note ? `<p class="user-text">${esc(L(it, 'note')).replace(/\n/g, '<br>')}</p>` : ''}
             ${s ? `<div class="chips-row"><a class="chip" href="#/trip/${esc(tr.id)}/map" data-focus-spot="${esc(s.id)}"><em class="cat-mini" style="--c:${CATS[s.cat]?.color || color}">${catIcon(s.cat, 15)}</em><span class="user-text">${esc(L(s, 'name'))}</span></a>
               <a class="chip" target="_blank" rel="noopener" href="${esc(gmapsDirectionsUrl(s))}">${t('Directions')}</a></div>` : ''}
-          </div>${reorderMode ? `<span class="reorder"><span class="drag-handle" role="button" tabindex="0" data-drag="${esc(d.id)}|${esc(it.id)}" aria-label="${t('Drag to reorder')}" title="${t('Drag to reorder')}">⠿</span><button type="button" data-dup="${esc(d.id)}|${esc(it.id)}" aria-label="${t('Duplicate')}">⧉</button></span>` : ''}</div></li>`; }).join('')}</ol>` : `<p class="muted">No stops yet</p>`}
+          </div><span class="reorder"><span class="drag-handle" role="button" tabindex="0" data-drag="${esc(d.id)}|${esc(it.id)}" aria-label="${t('Drag to reorder')}" title="${t('Drag to reorder')}">⠿</span><button type="button" class="stop-del-btn" data-del-item="${esc(d.id)}|${esc(it.id)}" aria-label="${t('Remove')}" title="${t('Remove')}">${TRASH}</button></span></div></li>`; }).join('')}</ol>` : `<p class="muted">No stops yet</p>`}
       <div class="day-actions">
         <button data-add-item="${esc(d.id)}" class="primary">+ ${t('Add stop')}</button>
         ${route ? `<a class="btn" target="_blank" rel="noopener" href="${esc(route)}">${t('Route in Google Maps')}</a>` : ''}
@@ -403,7 +397,7 @@ function itemForm(dayId, itemId) {
         <ul class="pp-list" id="pp-list" role="listbox" hidden></ul>
         <small class="field-hint">${t('Links this stop to a pin on the map. Leave empty for a plain stop.')}</small></div>
       <label>Day<select name="dayId">${tr.days.map((x, i) => `<option value="${esc(x.id)}" ${x.id === dayId ? 'selected' : ''}>Day ${i + 1} · ${esc(fmtDate(x.date))}</option>`).join('')}</select></label>
-      <p class="field-hint">${itemId ? t('Reorder: Days tab → Reorder, then drag the handle. Remove: swipe the stop to the right.') : ''}</p>`,
+      <p class="field-hint">${itemId ? t('Reorder: drag the ⠿ handle on the Days tab. Remove: tap the bin or swipe the stop to the right.') : ''}</p>`,
     onOpen: root => { placePicker(root, tr, pending); if (!itemId) root.querySelector('[name=title]').focus(); },
     onSubmit: f => {
       const title = f.get('title').trim(); if (!title) return sheetError('A name is required.');
@@ -614,7 +608,7 @@ function wireDrag() {
 document.addEventListener('DOMContentLoaded', () => {
   loadDb();
   document.body.addEventListener('click', e => {
-    const el = e.target.closest('[data-trip-menu],[data-toggle-day],[data-edit-day],[data-add-item],[data-edit-item],[data-focus-spot],[data-mv],[data-dup],[data-opt],[data-sort],[data-del-day]');
+    const el = e.target.closest('[data-trip-menu],[data-toggle-day],[data-edit-day],[data-add-item],[data-edit-item],[data-focus-spot],[data-mv],[data-del-item],[data-opt],[data-sort],[data-del-day]');
     if (!el) return;
     const ds = el.dataset;
     if (ds.tripMenu) tripMenu(ds.tripMenu);
@@ -624,7 +618,7 @@ document.addEventListener('DOMContentLoaded', () => {
     else if (ds.delDay) deleteDay(ds.delDay);
     else if (ds.editItem) { if (e.target.closest('a')) return; const [dId, iId] = ds.editItem.split('|'); itemForm(dId, iId); } // anywhere on the row opens the editor, except links
     else if (ds.mv) { const [a, b, c] = ds.mv.split('|'); moveItem(a, b, Number(c)); }
-    else if (ds.dup) { const [a, b] = ds.dup.split('|'); dupItem(a, b); }
+    else if (ds.delItem) { const [a, b] = ds.delItem.split('|'); removeItem(a, b); }
     else if (ds.opt) dayAction('opt', ds.opt);
     else if (ds.sort) dayAction('sort', ds.sort);
     else if (ds.focusSpot) { e.preventDefault(); pendingFocus = ds.focusSpot; go(`#/trip/${current.tripId}/map`); }

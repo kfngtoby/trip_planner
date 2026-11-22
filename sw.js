@@ -1,6 +1,6 @@
 // Caches the app so it opens without signal (e.g. on a train in Japan).
-// Deploy: bump V here AND the ?v= ids in index.html (same value), e.g. with: sed -i 's/33-ai-worker/NEW/g' sw.js index.html
-const V = '33-ai-worker';
+// Deploy: bump V here AND the ?v= ids in index.html (same value), e.g. with: sed -i 's/34-drag-ai/NEW/g' sw.js index.html
+const V = '34-drag-ai';
 const VERSION = 'trips-v' + V;
 const q = f => f + '?v=' + V;
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', q('style.css'),

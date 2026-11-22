@@ -37,7 +37,7 @@ Rules:
 Traveller wishes: ${String(wish || '').slice(0, 400) || 'none'}
 Return JSON only, in the form {"days":[{"n":<day number>,"stops":[{"time","title","jp","area","cat","note"}]}]}.
 plan_days: ${JSON.stringify(dayNums)}
-Trip: ${JSON.stringify(brief).slice(0, 20000)}`;
+Trip: ${JSON.stringify(brief).slice(0, 9000)}`;
 }
 // Same checks for both routes: only the days asked for, known categories, tidy times, short strings.
 function cleanItin(raw, dayNums) {
@@ -68,8 +68,9 @@ async function geminiWorker(prompt) { // Cloudflare Worker holds the key (worker
   let r;
   try { r = await fetch(aiApi() + '/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt }) }); }
   catch { throw Error(t('Could not reach Gemini. Check the connection.')); }
-  if (!r.ok) throw Error(r.status === 429 ? t('Gemini is busy or its free limit is reached. Try again later.') : t('The AI service returned an error.'));
-  return (await r.json()).text || '';
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Error(r.status === 429 ? t('Gemini is busy or its free limit is reached. Try again later.') : j.error ? `${t('The AI service returned an error.')} (${r.status}: ${j.error})` : t('The AI service returned an error.'));
+  return j.text || '';
 }
 async function aiItinerary(args) {
   const mode = aiMode(), lang = typeof language !== 'undefined' ? language : 'en';
