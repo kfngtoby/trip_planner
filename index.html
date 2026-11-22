@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f6f7f5">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Trips">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <title>Trips</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="style.css?v=28-map5">
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script defer src="firebase-config.js?v=28-map5"></script>
+  <script defer src="locale.js?v=28-map5"></script>
+  <script defer src="seed.js?v=28-map5"></script>
+  <script defer src="seed-research.js?v=28-map5"></script>
+  <script defer src="tz.js?v=28-map5"></script>
+  <script defer src="store.js?v=28-map5"></script>
+  <script defer src="fashion-catalog.js?v=28-map5"></script>
+  <script defer src="places.js?v=28-map5"></script>
+  <script defer src="reco.js?v=28-map5"></script>
+  <script defer src="fx.js?v=28-map5"></script>
+  <script defer src="receipt.js?v=28-map5"></script>
+  <script defer src="locate.js?v=28-map5"></script>
+  <script defer src="splitter.js?v=28-map5"></script>
+  <script defer src="sync.js?v=28-map5"></script>
+  <script defer src="ai.js?v=28-map5"></script>
+  <script defer src="plan.js?v=28-map5"></script>
+  <script defer src="discovery.js?v=28-map5"></script>
+  <script defer src="app.js?v=28-map5"></script>
+  <script defer src="slowpoke.js?v=28-map5"></script>
+</head>
+<body>
+  <div id="app"></div>
+
+  <dialog id="sheet" aria-labelledby="sheet-title">
+    <form id="sheet-form" novalidate>
+      <div class="sheet-head"><span class="grab" aria-hidden="true"></span><h2 id="sheet-title"></h2><button type="button" id="sheet-close" class="icon-btn" aria-label="Close">✕</button></div>
+      <div id="sheet-body"></div>
+      <p id="sheet-error" role="alert"></p>
+      <div class="sheet-foot"><button class="primary wide" id="sheet-submit" type="submit">Save</button></div>
+    </form>
+  </dialog>
+  <div id="toast" role="status" aria-live="polite" hidden></div>
+  <script>
+    // Offline support + installable app. Only works when served over https (or localhost).
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+      // If an older version was already running, reload once when the new one takes over, so a deploy shows without a manual second reload.
+      const hadController = !!navigator.serviceWorker.controller; let reloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+  </script>
+</body>
+</html>
