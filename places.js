@@ -109,7 +109,7 @@ function renderMapTab() {
   $('#view').innerHTML = `
     <div class="map-shell">
       <div id="map" aria-label="${t('Interactive trip map')}"></div>
-      <div class="map-ctrls"><button id="fit-map" class="map-btn">${t('Fit all')}</button><span id="map-style" class="overview-styles" role="group" aria-label="${t('Map style')}"><button class="map-btn" type="button" data-map-base="light">${t('Light Map')}</button><button class="map-btn" type="button" data-map-base="normal">${t('Normal Map')}</button></span><button id="locate" class="map-btn" aria-label="${t('Show my location')}">⌖</button></div>
+      <div class="map-ctrls"><button id="fit-map" class="map-btn">${t('Fit all')}</button><button id="map-style" class="map-btn" type="button"></button><button id="locate" class="map-btn" aria-label="${t('Show my location')}">⌖</button></div>
       <button id="route-toggle" class="map-btn route-toggle" type="button" role="switch" aria-checked="false" aria-pressed="false" aria-label="${t('Numbered route')}"><span class="rt-ico" aria-hidden="true">1·2·3</span><span class="rt-txt">${t('Route')}</span></button>
       <div id="route-panel" class="route-panel" hidden></div>
       <p id="map-status" class="map-status" role="status"></p>
@@ -170,7 +170,7 @@ function renderMapTab() {
   };
 
   const lf = leaflet();
-  if (!lf) { $('#map-status').textContent = t('Map unavailable. Use the places list and Google Maps directions.'); }
+  if (!lf) { $('#map-status').textContent = t('Map unavailable. Use the places list and Google Maps directions.'); $('#map-style').hidden = true; }
   else {
     lmap = lf.map('map', { zoomControl: false, attributionControl: true }).setView([34.9, 134.2], 7);
     // CARTO now serves "API KEY REQUIRED" placeholder tiles (they load fine, so no tileerror), so both styles use OpenStreetMap.
@@ -184,10 +184,11 @@ function renderMapTab() {
       baseKey=key; base=OSM(key==='light'?'base-muted':'').addTo(lmap);
       $('#map').dataset.base=key;
       try { localStorage.setItem('trips.map',key); } catch {}
-      $('#map-style').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mapBase===key)));
+      const sb=$('#map-style'), name=key==='light'?t('Light Map'):t('Normal Map');
+      sb.textContent=name; sb.setAttribute('aria-label',`${t('Map style')}: ${name}`);
     };
     setBase(baseKey);
-    $('#map-style').onclick=e=>{const b=e.target.closest('[data-map-base]');if(b)setBase(b.dataset.mapBase);};
+    $('#map-style').onclick=()=>setBase(baseKey==='light'?'normal':'light'); // one button, tap to switch
     lf.control.zoom({ position: 'bottomright' }).addTo(lmap);
     lmap.on('click', e => { if (pickCallback) { const cb = pickCallback; pickCallback = null; $('#map-status').textContent = ''; cb(e.latlng); } else hideSpotCard(); });
     lmap.on('move zoom resize', positionSpotCard);
@@ -335,8 +336,7 @@ function showSpotCard(id) {
   card.innerHTML = `
     <button type="button" class="spot-x" aria-label="${t('Close place')}">✕</button>
     <div class="spot-head"><span class="cat-badge" style="--c:${spotColor(tr, s)}">${catIcon(s.cat, 18)}</span>
-      <div><strong class="user-text">${esc(L(s, 'name'))}</strong>
-      <small><span class="user-text">${esc(s.city)}</span>${s.city ? ' · ' : ''}<span>${esc(CATS[s.cat]?.label || '')}</span></small></div></div>
+      <div><strong class="user-text">${esc(L(s, 'name'))}</strong></div></div>
     ${s.note ? `<p class="spot-note user-text">${esc(L(s, 'note'))}</p>` : ''}
     ${tags ? `<div class="tags">${tags}</div>` : ''}
     <div class="spot-actions"><a class="btn" target="_blank" rel="noopener" href="${esc(gmapsDirectionsUrl(s))}">Directions</a><button type="button" data-spot-more>${t('Details')}</button></div>`;

@@ -340,7 +340,7 @@ function dayCard(tr, d, i, isOpen) {
             ${it.note ? `<p class="user-text">${esc(L(it, 'note')).replace(/\n/g, '<br>')}</p>` : ''}
             ${s ? `<div class="chips-row"><a class="chip" href="#/trip/${esc(tr.id)}/map" data-focus-spot="${esc(s.id)}"><em class="cat-mini" style="--c:${CATS[s.cat]?.color || color}">${catIcon(s.cat, 15)}</em><span class="user-text">${esc(L(s, 'name'))}</span></a>
               <a class="chip" target="_blank" rel="noopener" href="${esc(gmapsDirectionsUrl(s))}">${t('Directions')}</a></div>` : ''}
-          </div>${reorderMode ? `<span class="reorder"><button type="button" data-mv="${esc(d.id)}|${esc(it.id)}|-1" aria-label="${t('Move up')}" ${ix === 0 ? 'disabled' : ''}>↑</button><button type="button" data-mv="${esc(d.id)}|${esc(it.id)}|1" aria-label="${t('Move down')}" ${ix === d.items.length - 1 ? 'disabled' : ''}>↓</button><button type="button" data-dup="${esc(d.id)}|${esc(it.id)}" aria-label="${t('Duplicate')}">⧉</button></span>` : ''}</div></li>`; }).join('')}</ol>` : `<p class="muted">No stops yet</p>`}
+          </div>${reorderMode ? `<span class="reorder"><span class="drag-handle" role="button" tabindex="0" data-drag="${esc(d.id)}|${esc(it.id)}" aria-label="${t('Drag to reorder')}" title="${t('Drag to reorder')}">⠿</span><button type="button" data-dup="${esc(d.id)}|${esc(it.id)}" aria-label="${t('Duplicate')}">⧉</button></span>` : ''}</div></li>`; }).join('')}</ol>` : `<p class="muted">No stops yet</p>`}
       <div class="day-actions">
         <button data-add-item="${esc(d.id)}" class="primary">+ ${t('Add stop')}</button>
         ${route ? `<a class="btn" target="_blank" rel="noopener" href="${esc(route)}">${t('Route in Google Maps')}</a>` : ''}
@@ -388,28 +388,26 @@ function dayForm(dayId) {
 }
 
 function itemForm(dayId, itemId) {
-  const tr = trip(), d = tr.days.find(x => x.id === dayId);
+  const tr = trip(), d = tr.days.find(x => x.id === dayId), pending = { spot: null };
   const it = itemId ? d.items.find(x => x.id === itemId) : { time: '', title: '', note: '', spotId: '' };
-  const idx = itemId ? d.items.indexOf(it) : -1;
   openSheet({
     title: itemId ? 'Edit stop' : 'Add stop', submit: 'Save',
     body: `<div class="pair pair-time"><label>Time<input name="time" maxlength="40" value="${esc(it.time)}" placeholder="09:00"></label>
       <label>Title<input name="title" required maxlength="160" value="${esc(it.title)}"></label></div>
       <label>Time is in<select name="tz"><option value="">${esc(tzLabel(tripTz(tr)))} (${t('trip')})</option>${[...new Set([homeTz(tr), ...TZ_PRESETS.map(p => p[0])])].filter(z => z !== tripTz(tr)).map(z => `<option value="${esc(z)}" ${z === it.tz ? 'selected' : ''}>${esc(tzLabel(z))}${z === homeTz(tr) ? ` (${t('home')})` : ''}</option>`).join('')}</select></label>
       <label>Notes<textarea name="note" rows="3" maxlength="1500">${esc(it.note)}</textarea></label>
-      <label>Place<select name="spotId"><option value="">${t('No place')}</option>${[...tr.spots].sort((a, b) => a.name.localeCompare(b.name)).map(s => `<option value="${esc(s.id)}" ${s.id === it.spotId ? 'selected' : ''}>${esc(s.name)}${s.city ? ' — ' + esc(s.city) : ''}</option>`).join('')}</select></label>
+      <div class="place-pick" id="place-pick"><label for="pp-q">${t('Map place')}</label>
+        <input type="hidden" name="spotId" value="${esc(it.spotId || '')}">
+        <div class="pp-chip" id="pp-chip" hidden></div>
+        <input id="pp-q" class="pp-q" type="search" autocomplete="off" autocapitalize="off" enterkeyhint="search" placeholder="${esc(t('Search saved places, or type a new one'))}">
+        <ul class="pp-list" id="pp-list" role="listbox" hidden></ul>
+        <small class="field-hint">${t('Links this stop to a pin on the map. Leave empty for a plain stop.')}</small></div>
       <label>Day<select name="dayId">${tr.days.map((x, i) => `<option value="${esc(x.id)}" ${x.id === dayId ? 'selected' : ''}>Day ${i + 1} · ${esc(fmtDate(x.date))}</option>`).join('')}</select></label>
-      ${itemId ? `<div class="pair"><button type="button" id="mv-up" ${idx === 0 ? 'disabled' : ''}>↑ ${t('Move up')}</button><button type="button" id="mv-down" ${idx === d.items.length - 1 ? 'disabled' : ''}>↓ ${t('Move down')}</button></div>
-      <button type="button" class="danger wide" id="del-item">Delete stop</button>` : ''}`,
-    onOpen: root => {
-      if (!itemId) { root.querySelector('[name=title]').focus(); return; }
-      const move = dir => { d.items.splice(idx, 1); d.items.splice(idx + dir, 0, it); saveDb(); closeSheet(); renderDaysTab(); };
-      root.querySelector('#mv-up').onclick = () => move(-1);
-      root.querySelector('#mv-down').onclick = () => move(1);
-      root.querySelector('#del-item').onclick = () => { const snap = snapshot(tr); d.items = d.items.filter(x => x !== it); saveDb(); closeSheet(); renderDaysTab(); undoToast('Stop deleted', snap); };
-    },
+      <p class="field-hint">${itemId ? t('Reorder: Days tab → Reorder, then drag the handle. Remove: swipe the stop to the right.') : ''}</p>`,
+    onOpen: root => { placePicker(root, tr, pending); if (!itemId) root.querySelector('[name=title]').focus(); },
     onSubmit: f => {
       const title = f.get('title').trim(); if (!title) return sheetError('A name is required.');
+      if (pending.spot && f.get('spotId') === pending.spot.id) tr.spots.push(pending.spot); // a place created in the picker is only kept when the stop is saved
       Object.assign(it, { time: f.get('time').trim(), tz: f.get('tz') || '', title, note: f.get('note').trim(), spotId: f.get('spotId') });
       const target = tr.days.find(x => x.id === f.get('dayId')) || d;
       if (!itemId) { it.id = uid('i'); target.items.push(it); }
@@ -422,6 +420,108 @@ function itemForm(dayId, itemId) {
   });
 }
 
+
+/* ================= PLACE PICKER (stop editor) =================
+   Replaces the long dropdown. Type to filter saved places; with nothing typed it suggests places named in the stop's
+   title or notes, then this day's places. If nothing fits, add the typed name as a new place, or search the map for it
+   (OpenStreetMap) and keep the result with its pin. A new place is only saved when the stop is saved. */
+function placePicker(root, tr, pending) {
+  const box = root.querySelector('#place-pick'), hid = box.querySelector('[name=spotId]'), chip = box.querySelector('#pp-chip'),
+    q = box.querySelector('#pp-q'), list = box.querySelector('#pp-list');
+  const norm = s => String(s || '').normalize('NFKC').toLowerCase();
+  const field = n => root.querySelector(`[name=${n}]`)?.value || '';
+  const all = () => (pending.spot ? [pending.spot] : []).concat(tr.spots);
+  const byId = id => all().find(x => x.id === id);
+  const label = s => `<span class="pp-ico" style="--c:${CATS[s.cat]?.color || '#5b6472'}">${catIcon(s.cat, 16)}</span><span class="pp-txt"><strong class="user-text">${esc(s.name)}</strong><small class="user-text">${esc([s.city, hasCoords(s) ? '' : t('no pin')].filter(Boolean).join(' · '))}</small></span>`;
+  let rows = [], act = -1, token = 0, found = null;
+
+  const paintChip = () => {
+    const s = byId(hid.value);
+    chip.hidden = !s; q.hidden = !!s;
+    if (s) chip.innerHTML = `<button type="button" class="pp-main" data-pp="change" aria-label="${esc(t('Change place'))}">${label(s)}</button><button type="button" class="pp-x" data-pp="clear" aria-label="${esc(t('Clear place'))}">✕</button>`;
+  };
+  const choose = s => { hid.value = s.id; q.value = ''; found = null; hide(); paintChip(); };
+  const hide = () => { list.hidden = true; act = -1; };
+
+  const hits = text => { // saved places named in the stop's title / notes, best first
+    const hay = norm(text); if (!hay.trim()) return [];
+    return tr.spots.map(s => {
+      const names = [s.name, s.jp].map(norm).filter(Boolean);
+      let score = names.some(n => n.length > 2 && hay.includes(n)) ? 3 : 0;
+      score += new Set(names.join(' ').split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 3 && hay.includes(w))).size;
+      return { s, score };
+    }).filter(x => x.score).sort((a, b) => b.score - a.score).map(x => x.s);
+  };
+  const dayNow = () => field('dayId') || tr.days[0]?.id;
+  const render = () => {
+    const query = norm(q.value).trim(), dayId = dayNow(), out = [], seen = new Set(), add = (head, arr) => {
+      const fresh = arr.filter(s => !seen.has(s.id)); if (!fresh.length) return;
+      out.push({ head }); fresh.forEach(s => { seen.add(s.id); out.push({ s }); });
+    };
+    if (query) {
+      const rank = s => { const n = norm(s.name), j = norm(s.jp), c = norm(s.city); return n.startsWith(query) || j.startsWith(query) ? 0 : n.includes(query) || j.includes(query) ? 1 : c.includes(query) ? 2 : 9; };
+      const m = all().filter(s => rank(s) < 9).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name)).slice(0, 8);
+      m.forEach(s => out.push({ s }));
+      if (!m.length) out.push({ note: t('No saved place matches.') });
+      out.push({ act: 'new' }, { act: 'find' });
+      if (found) out.push(...found);
+    } else {
+      add(t('Suggested'), hits(`${field('title')} ${field('note')}`).slice(0, 3));
+      add(t('This day'), tr.spots.filter(s => s.days.includes(dayId)).sort((a, b) => a.name.localeCompare(b.name)).slice(0, 6));
+      const rest = tr.spots.filter(s => !seen.has(s.id)).sort((a, b) => a.name.localeCompare(b.name));
+      if (rest.length) { out.push({ head: `${t('All places')} (${rest.length})` }); rest.slice(0, 5).forEach(s => out.push({ s })); if (rest.length > 5) out.push({ note: t('Type to search the rest.') }); }
+      if (!out.length) out.push({ note: t('No saved places yet. Type a name to add one.') });
+    }
+    rows = out.filter(r => r.s || r.act || r.hit);
+    let n = -1;
+    list.innerHTML = out.map(r => {
+      if (r.head) return `<li class="pp-head" role="presentation">${esc(r.head)}</li>`;
+      if (r.note) return `<li class="pp-note" role="presentation">${esc(r.note)}</li>`;
+      n++;
+      if (r.s) return `<li role="option"><button type="button" class="pp-row" data-i="${n}">${label(r.s)}</button></li>`;
+      if (r.hit) return `<li role="option"><button type="button" class="pp-row" data-i="${n}"><span class="pp-ico">📍</span><span class="pp-txt"><strong>${esc(r.hit.name)}</strong><small>${esc(r.hit.label)}</small></span></button></li>`;
+      const text = q.value.trim();
+      return `<li role="option"><button type="button" class="pp-row pp-act" data-i="${n}"><span class="pp-ico">${r.act === 'new' ? '＋' : '🔎'}</span><span class="pp-txt"><strong>${r.act === 'new' ? esc(t('Add as a new place')) : esc(t('Find on the map'))}: “${esc(text)}”</strong><small>${r.act === 'new' ? esc(t('No pin yet. You can set it later.')) : esc(t('Searches OpenStreetMap and keeps the pin.'))}</small></span></button></li>`;
+    }).join('');
+    list.hidden = false; if (act >= rows.length) act = -1;
+    mark();
+  };
+  const mark = () => list.querySelectorAll('.pp-row').forEach((b, i) => b.classList.toggle('on', i === act));
+  const guessCat = text => /ramen|拉麵|ラーメン|lunch|dinner|restaurant|cafe|café|sushi|yakiniku|izakaya|beef|food|食/i.test(`${text} ${field('title')}`) ? 'food' : 'sights';
+  const create = (name, extra = {}) => {
+    pending.spot = { id: uid('p'), name: name.slice(0, 160), jp: '', city: '', cat: guessCat(name), lat: NaN, lon: NaN, note: '', hours: '', link: '', gmaps: '', days: [], ...extra };
+    choose(pending.spot);
+  };
+  const run = async i => {
+    const r = rows[i]; if (!r) return;
+    if (r.s) return choose(r.s);
+    if (r.hit) { const x = r.hit; return create(x.name, { lat: x.lat, lon: x.lon, city: x.label.split(',').map(z => z.trim()).find((z, k) => k > 0 && /[市町村区]|city|ward/i.test(z)) || '' }); }
+    if (r.act === 'new') return create(q.value.trim());
+    if (r.act === 'find') {
+      const my = ++token, text = q.value.trim(); found = [{ note: t('Searching…') }]; render();
+      try { const res = await geocode(text); if (my !== token) return; found = res.length ? res.map(hit => ({ hit })) : [{ note: t('No results. Try the Japanese name or add the city.') }]; }
+      catch (e) { if (my !== token) return; found = [{ note: t(e.message) }]; }
+      render();
+    }
+  };
+  // keep focus in the field while a row is tapped (iOS does not focus buttons), so the list is not hidden before the tap lands
+  list.addEventListener('pointerdown', e => e.preventDefault());
+  list.addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (b) run(Number(b.dataset.i)); });
+  chip.addEventListener('click', e => {
+    const b = e.target.closest('[data-pp]'); if (!b) return;
+    if (b.dataset.pp === 'clear') { hid.value = ''; paintChip(); }
+    else { hid.value = ''; paintChip(); q.focus(); }
+  });
+  q.addEventListener('focus', () => { render(); setTimeout(() => list.scrollIntoView({ block: 'nearest' }), 0); });
+  q.addEventListener('input', () => { token++; found = null; act = -1; render(); });
+  q.addEventListener('blur', () => setTimeout(hide, 120));
+  q.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); if (list.hidden) render(); if (rows.length) { act = (act + (e.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length; mark(); list.querySelectorAll('.pp-row')[act]?.scrollIntoView({ block: 'nearest' }); } }
+    else if (e.key === 'Enter') { e.preventDefault(); if (act >= 0) run(act); else if (rows.length && q.value.trim()) run(0); } // Enter must not submit the whole stop form
+    else if (e.key === 'Escape' && !list.hidden) { e.preventDefault(); e.stopPropagation(); hide(); } // close the list, not the whole sheet
+  });
+  paintChip();
+}
 
 /* ================= SWIPE RIGHT TO REMOVE A STOP =================
    Drag a stop to the right: a red "Remove" layer shows behind it; let go past about a third of the width and it is removed
@@ -461,6 +561,55 @@ function wireSwipe() {
   document.body.addEventListener('pointercancel', end);
 }
 
+/* ================= DRAG TO REORDER =================
+   Days tab → Reorder: hold the ⠿ handle and drag a stop up or down within its day; the others slide out of the way and
+   the order is saved on release. Arrow Up / Down on a focused handle does the same for keyboard users. */
+function wireDrag() {
+  let g = null;
+  document.addEventListener('click', e => { if (e.target.closest('.drag-handle')) { e.stopPropagation(); e.preventDefault(); } }, true);
+  document.body.addEventListener('keydown', e => {
+    const h = e.target.closest?.('.drag-handle'); if (!h || !['ArrowUp', 'ArrowDown'].includes(e.key)) return;
+    e.preventDefault(); const [a, b] = h.dataset.drag.split('|'); moveItem(a, b, e.key === 'ArrowUp' ? -1 : 1);
+    document.querySelector(`[data-drag="${h.dataset.drag}"]`)?.focus();
+  });
+  const update = () => {
+    const dy = (g.y - g.y0) + ((g.sc ? g.sc.scrollTop : 0) - g.s0);
+    g.li.style.transform = `translateY(${dy}px)`;
+    const c = g.rects[g.from].top + g.rects[g.from].h / 2 + dy; let to = g.from;
+    g.rects.forEach((r, i) => { const m = r.top + r.h / 2; if (i < g.from && c < m) to = Math.min(to, i); if (i > g.from && c > m) to = Math.max(to, i); });
+    g.to = to;
+    g.lis.forEach((x, i) => { if (x !== g.li) x.style.transform = to > g.from && i > g.from && i <= to ? `translateY(${-g.shift}px)` : to < g.from && i >= to && i < g.from ? `translateY(${g.shift}px)` : ''; });
+  };
+  const tick = () => {
+    if (!g) return;
+    if (g.sc) { const r = g.sc.getBoundingClientRect(); if (g.y < r.top + 70) g.sc.scrollTop -= 12; else if (g.y > r.bottom - 70) g.sc.scrollTop += 12; }
+    update(); g.raf = requestAnimationFrame(tick);
+  };
+  document.body.addEventListener('pointerdown', e => {
+    const h = e.target.closest('.drag-handle'); if (!h || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    const li = h.closest('li.stop'), ol = li && li.parentElement; if (!li || !ol) return;
+    const lis = [...ol.children].filter(x => x.classList.contains('stop')), from = lis.indexOf(li), sc = $('#view'), s0 = sc ? sc.scrollTop : 0;
+    const rects = lis.map(x => { const r = x.getBoundingClientRect(); return { top: r.top + s0, h: r.height }; });
+    const gap = lis.length < 2 ? 0 : from < lis.length - 1 ? rects[from + 1].top - rects[from].top - rects[from].h : rects[from].top - rects[from - 1].top - rects[from - 1].h;
+    g = { id: e.pointerId, h, li, ol, lis, rects, from, to: from, y0: e.clientY, y: e.clientY, s0, sc, shift: rects[from].h + gap, raf: 0 };
+    try { h.setPointerCapture(e.pointerId); } catch {}
+    li.classList.add('dragging'); ol.classList.add('drag-on'); g.raf = requestAnimationFrame(tick);
+  });
+  document.body.addEventListener('pointermove', e => { if (g && e.pointerId === g.id) g.y = e.clientY; });
+  const end = e => {
+    if (!g || e.pointerId !== g.id) return;
+    const { h, li, ol, lis, from, to, sc } = g; cancelAnimationFrame(g.raf); g = null; lastSwipe = Date.now();
+    li.classList.remove('dragging'); ol.classList.remove('drag-on'); lis.forEach(x => { x.style.transform = ''; });
+    if (e.type === 'pointercancel' || to === from) return;
+    const [dId] = h.dataset.drag.split('|'), d = trip().days.find(x => x.id === dId); if (!d) return;
+    const top = sc ? sc.scrollTop : 0, [it] = d.items.splice(from, 1); d.items.splice(to, 0, it);
+    saveDb(); renderDaysTab(); if (sc) sc.scrollTop = top;
+    document.querySelector(`[data-drag="${h.dataset.drag}"]`)?.focus({ preventScroll: true });
+  };
+  document.body.addEventListener('pointerup', end);
+  document.body.addEventListener('pointercancel', end);
+}
+
 /* ================= GLOBAL WIRING ================= */
 document.addEventListener('DOMContentLoaded', () => {
   loadDb();
@@ -489,6 +638,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#sheet-close').onclick = closeSheet;
   $('#sheet').addEventListener('click', e => { if (e.target === $('#sheet')) closeSheet(); }); // tap backdrop
   wireSwipe();
+  wireDrag();
   window.addEventListener('hashchange', route);
   window.addEventListener('langchange', () => { if (!$('#sheet').open) route(); });
   route();

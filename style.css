@@ -589,3 +589,39 @@ label.check{display:flex;gap:8px;align-items:flex-start}
 
 .disc-chips{display:flex;flex-wrap:wrap;gap:6px}.disc-chips button{min-height:36px;padding:0 12px}.disc-chips button[aria-pressed=true]{font-weight:700;border-color:currentColor;box-shadow:inset 0 0 0 1px currentColor}
 .disc-map{height:200px;border-radius:12px;overflow:hidden}.disc-pin{background:none;border:0;box-shadow:none;color:#fff;font-weight:700;padding:0}.disc-pin:before{display:none}article.disc-on{outline:2px solid #e0528f;border-radius:10px}
+
+/* Find food: Tabelog search builder */
+.tb-form b{display:block;margin-bottom:6px;font-size:14px}
+.tb-form small{color:var(--muted)}
+.tb-form small:empty{display:none}
+.tb-form a.btn{display:flex;align-items:center;justify-content:center}
+.tb-form a.btn[aria-disabled=true]{opacity:.5;pointer-events:none}
+#map-style{width:auto;min-height:44px;padding-inline:10px;white-space:nowrap}
+
+/* Drag to reorder (Days tab, Reorder mode) */
+.drag-handle{display:flex;align-items:center;justify-content:center;min-height:34px;min-width:38px;border:1px solid var(--line);border-radius:10px;color:var(--muted);font-size:20px;line-height:1;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none}
+.drag-handle:active{cursor:grabbing}
+.stops.drag-on{-webkit-user-select:none;user-select:none}
+.stops.drag-on .stop:not(.dragging){transition:transform .15s ease}
+.stop.dragging{z-index:5;box-shadow:0 8px 24px #0003;transition:none}
+.field-hint{font-size:12px;color:var(--muted)}
+.field-hint:empty{display:none}
+
+/* Place picker (stop editor) */
+.place-pick{display:grid;gap:6px;position:relative}
+.place-pick>label{font-size:14px}
+.pp-q{width:100%;min-height:44px;font-size:16px}
+.pp-chip{display:flex;align-items:stretch;border:1px solid var(--line);border-radius:12px;background:var(--card);overflow:hidden}
+.pp-chip[hidden],.pp-q[hidden],.pp-list[hidden]{display:none}
+.pp-main{flex:1;min-width:0;display:flex;align-items:center;gap:10px;min-height:48px;padding:6px 10px;border:0;background:none;text-align:left;justify-content:flex-start}
+.pp-x{min-width:48px;min-height:48px;border:0;border-left:1px solid var(--line);background:none;color:var(--muted);font-size:16px}
+.pp-list{list-style:none;margin:0;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--card);max-height:min(46vh,340px);overflow-y:auto;display:grid;gap:2px}
+.pp-head{padding:8px 8px 2px;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.pp-note{padding:8px;font-size:13px;color:var(--muted)}
+.pp-row{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:6px 8px;border:0;border-radius:10px;background:none;text-align:left;justify-content:flex-start}
+.pp-row.on,.pp-row:active{background:color-mix(in srgb,var(--ink) 8%,var(--card))}
+.pp-ico{flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:color-mix(in srgb,var(--c,#5b6472) 16%,var(--card));color:var(--c,#5b6472);font-size:15px}
+.pp-txt{display:grid;min-width:0}
+.pp-txt strong{font-weight:600;overflow-wrap:anywhere}
+.pp-txt small{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pp-act .pp-ico{background:color-mix(in srgb,var(--ink) 8%,var(--card));color:var(--ink)}

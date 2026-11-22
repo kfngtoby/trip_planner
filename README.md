@@ -21,13 +21,20 @@ Data is stored on the device (`localStorage`, key `trip-companion-v3`). A differ
 - **Expenses**: split costs, members, settle up, CSV export. Each expense has a bill currency; a live rate is fetched (frankfurter.dev), editable, and cached for offline. The amount is stored in the trip currency with the original amount and rate kept. Receipt scan (OCR, 31 languages) detects language and currency.
 - **Timezones**: each trip has a destination and a home zone (Rename trip → Timezones). Clocks, `Day n/N`, home-time equivalents (`≙`, `+1d`) and flight elapsed time (⏱) are DST-safe.
 
-### Find food (live Tabelog)
-Nothing is preloaded. Flow: **Find food** → enter a location (or pick an itinerary stop, or Near me, which only fills in the place name) → choose a type → **Search** → the app reads Tabelog's rating-sorted list for that area → **Not interested · Another batch** shows the next 5.
-- Each Tabelog page holds about 20 places, so the next 4 batches come from the page already fetched; a new page is fetched only when those run out (up to 10 pages). A new Search, area or type starts again from page 1.
-- Each result shows the shop name, food type (and nearest station), address, Tabelog rating (with review count) and budget (dinner / lunch), and links to its Tabelog page. The list page has no full address, so the app reads it from each shop's own page right after the batch appears ("Loading address…", then the address). Those page reads count toward the daily limit. Add to day creates a linked stop with Undo.
-- Browsers cannot read tabelog.com directly, so this goes through the Cloud Function task `tabelog_search`. **It needs the Firebase setup below and a signed-in user.** Otherwise the sheet says so and offers a link that opens the same search on tabelog.com.
-- Limits: one page per request, cached 10 minutes on the server, 300 page fetches per user per day (`TABELOG_DAILY_LIMIT`). Tabelog has no public API and its terms restrict automated access, so keep this to light personal use. If Tabelog changes its HTML, results come back empty and the sheet shows the fallback link (parser: `functions/tabelog.js`).
-- Place names are matched in Japanese: "Himeji" or 姬路 is converted to 姫路 with a Nominatim lookup before searching.
+### Find food (Tabelog search builder)
+Nothing is fetched from Tabelog and no server is needed. **Find food** opens a small form that builds the search for you:
+
+- **Area**: a station or district, prefilled from the day's place. "Himeji" or 姬路 is converted to 姫路 with a Nominatim lookup, and the form shows what it will search as.
+- **Search key** (optional): any extra word, such as tsukemen or private room.
+- **Food type**: Any, Ramen, Sushi, Udon, Yakiniku, Izakaya, Okonomiyaki, Italian, or Café & sweets. The type is added to the search as its Japanese keyword.
+- **Minimum rating**: Any, 3.0+, 3.5+, or 4.0+.
+- **Open on Tabelog**: opens tabelog.com in a new tab with the search sorted by rating, highest first.
+
+Example: area `Himeji station`, type Ramen, rating 3.5+ opens the Tabelog results for 姫路駅 + ラーメン, best rated first.
+
+Limit: I could not confirm a Tabelog URL setting that filters by score, so the minimum rating is a reminder, not a filter. Results arrive highest first, so stop reading where scores fall below your minimum.
+
+The Tabelog code in `functions/` is no longer used by Find food and can be deleted.
 
 ### Find shopping (`discovery.js`)
 Search a station or district, a mapped stop, or use Near me (GPS, opt-in). Live data comes from Nominatim and Overpass (second Overpass server as fallback). Results are cached on the device for 24 hours (up to 10 searches, key `trip-osm-v2`); if both servers fail, older cached results are shown with a notice. Add to day creates a linked stop with Undo. 小红书 and Google links are research links, not live feeds; ratings and prices are never inferred.
@@ -45,7 +52,7 @@ Curated shops by city and district, nearest first, one branch per chain. **More 
 | `app.js` | Router, home screen, trip header, Days tab |
 | `places.js` | Overview map (Leaflet), week bar and day slider, place editor, Add place |
 | `plan.js` | AI itinerary suggestions (Gemini via Cloud Function, or a key stored on this device) |
-| `discovery.js` | Find food (live Tabelog) / Find shopping (OpenStreetMap) |
+| `discovery.js` | Find food (Tabelog search builder) / Find shopping (OpenStreetMap) |
 | `reco.js`, `fashion-catalog.js` | Fashion suggestions and curated catalog |
 | `locate.js` | Find a place from title, hint and photos (OCR, optional Google Vision, Nominatim + Overpass) |
 | `receipt.js`, `fx.js`, `splitter.js` | Receipt OCR, currency conversion, expenses and settlement |
@@ -53,14 +60,22 @@ Curated shops by city and district, nearest first, one branch per chain. **More 
 | `seed.js`, `seed-research.js` | Example trip on first run; research merged in once without overwriting edits |
 | `slowpoke.js` | The draggable mascot in the top bar |
 | `sync.js`, `ai.js`, `firebase-config.js` | Optional sign-in, sync and AI client (inactive while `FIREBASE_CONFIG` is `null`) |
+| `worker/` | Cloudflare Worker that calls Gemini for the AI itinerary (key stays on Cloudflare) |
 | `functions/` (`index.js`, `tabelog.js`), `firebase.json`, `firestore.rules` | Firebase backend (AI and Tabelog search) and hosting config |
 
 ## Deploying changes
 Bump the version in **both** places, using one value: `V` in `sw.js` and every `?v=` in `index.html`.
 ```
-sed -i 's/29-food10/NEW/g' sw.js index.html
+sed -i 's/29-food12/NEW/g' sw.js index.html
 ```
 `sw.js` builds its cache list from `V`, so only the `?v=` ids in `index.html` need to match it. The page loads network-first and reloads once when a new service worker takes over.
+
+## Gemini through a Cloudflare Worker (free, no card)
+`worker/worker.js` is a single file that calls Gemini for the AI itinerary, so the key stays on Cloudflare and no sign-in is needed.
+1. Create a free account at cloudflare.com, then Workers & Pages → Create → Hello World → Edit code. Paste all of `worker/worker.js`, set `ALLOWED_ORIGIN` at the top to your site's address (no path, no trailing slash), and Deploy.
+2. Worker → Settings → Variables and Secrets → Add → type **Secret**, name `GEMINI_API_KEY`, value = a key from Google AI Studio. Deploy again.
+3. Paste the Worker's address into `window.AI_API` in `firebase-config.js` (e.g. `https://trip-worker.yourname.workers.dev`), bump the version, redeploy the app.
+The Worker fixes the model, the itinerary format and a prompt size limit, and only accepts requests from `ALLOWED_ORIGIN`. A script that fakes the origin could still use your key, so use a free-tier key with no billing attached. With `AI_API` empty the app falls back to a key saved on the device. Only the itinerary suggestions use the Worker.
 
 ## Optional: accounts, sync, Gemini and live Tabelog
 Off until `firebase-config.js` has your Firebase web config (values are not secrets; access is controlled by `firestore.rules`). With it left as `null` the app is fully local.

@@ -89,6 +89,15 @@ function discCachePut(k,rows){
 }
 /* Live Tabelog search (food). Nothing is loaded until the user presses Search; each "next batch" fetches the next page on demand.
    Needs sign-in because the page is read by the Cloud Function (browsers cannot read tabelog.com directly). */
+const tbApi=()=>String(window.TABELOG_API||'').replace(/\/+$/,'');
+const tbAvailable=()=>!!tbApi()||aiAvailable();
+async function tbCall(kind,params,signal){ // Cloudflare Worker if configured, otherwise the signed-in Firebase function
+ if(tbApi()){
+  const r=await fetch(tbApi()+(kind==='search'?'/search?':'/shop?')+new URLSearchParams(params),{signal});
+  const j=await r.json().catch(()=>({}));if(!r.ok)throw Error(j.error||'Tabelog search failed');return j;
+ }
+ return aiCall(kind==='search'?'tabelog_search':'tabelog_detail',kind==='search'?params:{link:params.link});
+}
 const tbUrl=(area,kw)=>'https://tabelog.com/rstLst/?'+new URLSearchParams({vs:'1',sa:area||'',sk:kw||'',sw:'',SrtT:'rt'});
 async function discJaArea(area,signal){ // Tabelog matches Japanese area names, so turn "Himeji" / 姬路 into 姫路
  if(/[\u3040-\u30ff]/.test(area))return area;
@@ -151,7 +160,7 @@ function discover(tr, dayId, mode){
   const tbNote=p=>[p.genre,p.station,p.address,p.budgetText&&z('Budget ','預算 ')+p.budgetText].filter(Boolean).join(' · ');
   async function tbAddresses(list,valid){ // fills in addresses from each shop's Tabelog page, a few at a time, then redraws
    await Promise.all(list.filter(p=>p.live&&!p.address&&!p.addrTried).map(async p=>{
-    p.addrTried=1;try{const r=await aiCall('tabelog_detail',{link:p.link});if(r.address){p.address=r.address;p.note=tbNote(p);}}catch{}
+    p.addrTried=1;try{const r=await tbCall('shop',{link:p.link});if(r.address){p.address=r.address;p.note=tbNote(p);}}catch{}
     if(valid()&&batch.includes(p))render();
    }));
   }
@@ -160,7 +169,7 @@ function discover(tr, dayId, mode){
    controller?.abort();controller=new AbortController();const signal=controller.signal,n=++seq,valid=()=>n===seq&&sheet.open&&sheetHandlers===handlers;
    if(fresh)tbReset();
    if(!area){status=z('Enter an area or station first.','請先輸入地區或車站。');render();return;}
-   if(!aiAvailable()){status=z('Live Tabelog search needs sign-in (top of My trips). You can open the same search on Tabelog below.','即時食べログ搜尋需要登入（我的行程頂部）。可用下方連結在食べログ開啟相同搜尋。');render();return;}
+   if(!tbAvailable()){status=!syncEnabled()?z('Live Tabelog search is not set up yet: set TABELOG_API (free Cloudflare Worker) or the Firebase setup, both in the README. You can open the same search on Tabelog below.','即時食べログ搜尋尚未設定：請設定 TABELOG_API（免費 Cloudflare Worker）或 Firebase，詳見 README。可用下方連結在食べログ開啟相同搜尋。'):z('Sign in with Google (strip at the top of My trips) to use live Tabelog search. You can open the same search on Tabelog below.','請先用 Google 登入（「我的行程」頂部）才能使用即時食べログ搜尋。可用下方連結在食べログ開啟相同搜尋。');render();return;}
    status=z('Searching Tabelog…','正在搜尋食べログ…');render();
    try{
     if(!tb.ja){tb.ja=await discJaArea(area,signal);if(!valid())return;}
@@ -168,7 +177,7 @@ function discover(tr, dayId, mode){
     while(next5.length<5){
      if(!tb.buf.length){
       if(tb.end||tb.page>=10)break;
-      const r=await aiCall('tabelog_search',{area:tb.ja,keyword:tbKeyword(),page:tb.page+1});if(!valid())return;
+      const r=await tbCall('search',{area:tb.ja,keyword:tbKeyword(),page:tb.page+1},signal);if(!valid())return;
       tb.page++;const items=r.items||[];if(r.end||!items.length)tb.end=true;
       tb.buf.push(...items.map(i=>({id:'tb:'+i.link,name:i.name,jp:i.name,link:i.link,score:i.score,reviews:i.reviews,label:i.label,station:i.station,genre:i.genre,budgetText:i.budget,
        note:tbNote(i),source:'Tabelog',live:1,city:area,type:type==='any'?'':type}))
@@ -200,7 +209,47 @@ function discover(tr, dayId, mode){
    pool=[...local(),...rows];next(true);if(batch.length<3&&radius<6){radius+=2;return search();}status=batch.length?(stale?z('Offline or busy: showing results saved earlier + saved places','離線或伺服器忙碌：顯示較早儲存的結果＋已儲存地點'):z('OpenStreetMap + saved places','OpenStreetMap ＋ 已儲存地點')):z('No matches. Try a wider area or import a place.','沒有結果，可擴大範圍或匯入地點。');render();
   }catch(e){if(!valid())return;status=!area&&!point?z('Enter an area or use Near me.','請輸入地區或使用我的位置。'):z('Live search unavailable. Showing local matches only.','即時搜尋暫不可用，只顯示本機結果。');render();}finally{clearTimeout(timer);}
  }
- const handlers={title,body:'',submit:null,onOpen:()=>{render();if(!food)setTimeout(()=>search(),0);body.onchange=e=>{
+ /* Find food: build a Tabelog search for the user to open. Nothing is fetched from Tabelog.
+    Area + optional key + food type + minimum rating -> one "Open on Tabelog" link (sorted by rating). */
+ function tbBuilder(){
+  const types=[['','Any','不限'],['ramen','Ramen','拉麵'],['sushi','Sushi','壽司'],['udon','Udon','烏冬'],['yakiniku','Yakiniku','燒肉'],['izakaya','Izakaya','居酒屋'],['okonomi','Okonomiyaki','大阪燒'],['italian','Italian','意大利菜'],['dessert','Café & sweets','咖啡甜品']],
+   mins=[['','Any','不限'],['3.0','3.0+','3.0+'],['3.5','3.5+','3.5+'],['4.0','4.0+','4.0+']];
+  let ftype='',minR='',key='',ja=/[\u3040-\u30ff]/.test(area)?area:'',n=0;
+  const chips=(attr,rows,cur)=>rows.map(([id,en,zh])=>`<button type="button" data-${attr}="${esc(id)}" aria-pressed="${id===cur}">${esc(z(en,zh))}</button>`).join('');
+  body.innerHTML=`<div class="discover tb-form">
+   <label>${z('Area','地區')}<input id="tb-area" value="${esc(area)}" placeholder="Himeji station / 姫路駅" autocomplete="off" autocapitalize="off" enterkeyhint="done"></label>
+   <small id="tb-as"></small>
+   <label>${z('Search key (optional)','搜尋詞（選填）')}<input id="tb-key" placeholder="${z('e.g. tsukemen, private room','例如 沾麵、個室')}" autocomplete="off" enterkeyhint="done"></label>
+   <div role="group" aria-labelledby="tb-type-l"><b id="tb-type-l">${z('Food type','料理類型')}</b><div class="disc-chips">${chips('tbtype',types,ftype)}</div></div>
+   <div role="group" aria-labelledby="tb-min-l"><b id="tb-min-l">${z('Minimum rating','最低評分')}</b><div class="disc-chips">${chips('tbmin',mins,minR)}</div></div>
+   <a id="tb-open" class="btn" target="_blank" rel="noopener noreferrer">${z('Open on Tabelog','在食べログ開啟')}</a>
+   <small id="tb-note"></small></div>`;
+  const open=body.querySelector('#tb-open'),as=body.querySelector('#tb-as'),note=body.querySelector('#tb-note');
+  const sync=()=>{
+   const kw=[discJP[ftype]||'',key].filter(Boolean).join(' ');
+   if(area){open.href=tbUrl(ja||area,kw);open.removeAttribute('aria-disabled');}else{open.removeAttribute('href');open.setAttribute('aria-disabled','true');}
+   as.textContent=ja&&ja!==area?z('Searching Tabelog as: ','以此搜尋食べログ：')+ja:'';
+   note.textContent=!area?z('Enter an area or station to continue.','請輸入地區或車站。'):minR?z(`Opens sorted by rating, highest first. Stop reading where scores drop below ${minR}.`,`依評分由高到低排序。看到評分低於 ${minR} 就可以停。`):z('Opens sorted by rating, highest first.','依評分由高到低排序。');
+   body.querySelectorAll('[data-tbtype]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tbtype===ftype)));
+   body.querySelectorAll('[data-tbmin]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tbmin===minR)));
+  };
+  const lookup=()=>{const m=++n;discJaArea(area).then(r=>{if(m===n&&sheet.open&&sheetHandlers===handlers){ja=r;sync();}});}; // "Himeji" / 姬路 -> 姫路 (Nominatim), not Tabelog
+  body.oninput=e=>{
+   if(e.target.id==='tb-area'){area=e.target.value.trim();ja=/[\u3040-\u30ff]/.test(area)?area:'';n++;}
+   else if(e.target.id==='tb-key')key=e.target.value.trim();else return;
+   sync();
+  };
+  body.onchange=e=>{if(e.target.id==='tb-area'&&area&&!ja)lookup();};
+  body.onclick=e=>{
+   const b=e.target.closest('[data-tbtype],[data-tbmin]');if(!b)return;
+   if(b.dataset.tbtype!==undefined)ftype=b.dataset.tbtype;else minR=b.dataset.tbmin;
+   sync();
+  };
+  open.addEventListener('click',e=>{if(!area)e.preventDefault();});
+  sync();
+  if(area&&!ja)lookup();
+ }
+ const handlers={title,body:'',submit:null,onOpen:()=>{if(food){tbBuilder();return;}render();if(!food)setTimeout(()=>search(),0);body.onchange=e=>{
    const v=e.target.value;switch(e.target.id){case 'disc-stop':{const s=anchorSpots.find(p=>p.id===v);if(!s)return;point=s;anchor=s.name;area=s.city||d.place||'';if(food){tbReset();status=z('Press Search.','請按「搜尋」。');render();}else search();return;}case 'disc-type':type=v;ref='';if(!pool.length||status===z('Looking for nearby places…','搜尋附近地點…')){search();return;}break;case 'disc-ref':ref=v;break;case 'disc-sort':sort=v;break;case 'disc-rating':rating=v;break;case 'disc-budget':budget=v;break;default:return;}
    next(true);status=batch.length?'':z('No matches for these filters.','沒有符合篩選條件的地點。');render();
   };body.onclick=e=>{const b=e.target.closest('[data-disc]');if(!b)return;const action=b.dataset.disc;

@@ -1,14 +1,16 @@
 'use strict';
 /* Days tab: AI itinerary suggestions (Gemini).
    Weeks are collapsed (Week 1 · Week 2 · Week 3 …). Open one, then slide to a single day, or to "Week" for all its days.
-   Two ways to reach Gemini:
+   Three ways to reach Gemini:
    - cloud: signed in (stage 3) → Cloud Function `ai`, task `suggest_itinerary`. The key never reaches the browser.
+   - worker: `window.AI_API` (firebase-config.js) → Cloudflare Worker `worker/worker.js` that holds the key. No sign-in needed.
    - local: a Gemini key saved on THIS device (Google AI Studio key) → the browser calls Gemini directly.
    Suggestions are shown for ticking first; nothing is added to the trip until "Add" is pressed. */
 
 const GEMINI_MODEL = 'gemini-2.5-flash'; // keep in step with functions/index.js
 const geminiKey = () => { try { return localStorage.getItem('trip-gemini-key') || ''; } catch { return ''; } };
-const aiMode = () => (typeof aiAvailable === 'function' && aiAvailable()) ? 'cloud' : geminiKey() ? 'local' : '';
+const aiApi = () => String(window.AI_API || '').replace(/\/+$/, '');
+const aiMode = () => (typeof aiAvailable === 'function' && aiAvailable()) ? 'cloud' : aiApi() ? 'worker' : geminiKey() ? 'local' : '';
 const aiUi = { open: false, w: -1, pos: 1, wish: '', pace: 'balanced', results: null, busy: false, status: '' };
 
 const ITIN_SCHEMA = { type: 'OBJECT', properties: { days: { type: 'ARRAY', items: { type: 'OBJECT', properties: {
@@ -62,9 +64,17 @@ async function geminiLocal(prompt) {
   const j = await r.json();
   return (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
 }
+async function geminiWorker(prompt) { // Cloudflare Worker holds the key (worker/worker.js)
+  let r;
+  try { r = await fetch(aiApi() + '/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt }) }); }
+  catch { throw Error(t('Could not reach Gemini. Check the connection.')); }
+  if (!r.ok) throw Error(r.status === 429 ? t('Gemini is busy or its free limit is reached. Try again later.') : t('The AI service returned an error.'));
+  return (await r.json()).text || '';
+}
 async function aiItinerary(args) {
   const mode = aiMode(), lang = typeof language !== 'undefined' ? language : 'en';
   if (mode === 'cloud') return cleanItin(await aiCall('suggest_itinerary', { trip: args.brief, dayNums: args.dayNums, wish: args.wish, pace: args.pace, lang }), args.dayNums);
+  if (mode === 'worker') return cleanItin(await geminiWorker(itinPrompt({ ...args, lang })), args.dayNums);
   if (mode === 'local') return cleanItin(await geminiLocal(itinPrompt({ ...args, lang })), args.dayNums);
   throw Error(t('Sign in or save a Gemini key on this device to use AI.'));
 }
@@ -111,7 +121,7 @@ function aiPanelHtml(tr) {
       <p class="ai-sel" id="ai-sel" aria-live="polite">${esc(aiSelText(tr))}</p>
       <label>${t('Your wishes (optional)')}<textarea id="ai-wish" rows="2" maxlength="400" placeholder="${esc(t('e.g. vintage shops, ramen, not too much walking'))}">${esc(aiUi.wish)}</textarea></label>
       <div class="pills" role="group" aria-label="${t('Pace')}">${paces.map(([k, l]) => `<button type="button" data-ai-pace="${k}" aria-pressed="${aiUi.pace === k}">${t(l)}</button>`).join('')}</div>
-      <div class="row ai-actions"><button type="button" class="primary" id="ai-go" ${aiUi.w < 0 || aiUi.busy ? 'disabled' : ''}>✨ ${t('Suggest stops')}</button>${mode === 'cloud' ? '' : `<button type="button" id="ai-key">${t('Gemini key')}${mode === 'local' ? ' ✓' : ''}</button>`}</div>
+      <div class="row ai-actions"><button type="button" class="primary" id="ai-go" ${aiUi.w < 0 || aiUi.busy ? 'disabled' : ''}>✨ ${t('Suggest stops')}</button>${mode === 'cloud' || mode === 'worker' ? '' : `<button type="button" id="ai-key">${t('Gemini key')}${mode === 'local' ? ' ✓' : ''}</button>`}</div>
       <p class="hint" id="ai-st" aria-live="polite">${esc(aiUi.status)}</p>
       <p class="hint">${t('Your trip summary and wishes are sent to Google Gemini. Check opening hours before you go.')}</p>
       <div id="ai-results">${aiResultsHtml(tr)}</div>

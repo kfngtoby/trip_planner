@@ -1,0 +1,8 @@
+name = "trip-worker"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+[vars]
+# Your site's address exactly (no path, no trailing slash). Empty = the address written in worker.js.
+ALLOWED_ORIGIN = ""
+# Secret (not stored here): npx wrangler secret put GEMINI_API_KEY
