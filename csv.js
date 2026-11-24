@@ -1,30 +1,38 @@
 'use strict';
-/* Days tab: CSV import (with preview), CSV export and a sample / quick-entry template.
-   One column layout is used everywhere (sample, export, import), so an exported file can be edited and imported again:
-     Date, Time, Category, Day, Title, Map place, Notes, Lat, Lon, Day title, Area, Hours, Link
-   - Date       YYYY-MM-DD (also YYYY/M/D). Wins over Day when both are given.
-   - Day        day number, 1 = first day of the trip.
+/* Days tab: CSV / Excel import (with preview), CSV export and the Excel sample / template.
+   ONE column layout is used for the Excel export, the blank template, the sample and the CSV, so a file that was exported can be
+   edited and imported again, and a template looks exactly like an export:
+     Day, Date, Time, Type, Stop, Location, Location link, Coordinates, Notes, Day title, Area, Hours, Website
+   (Excel files add Tag 1-3 after Notes; in CSV the tags stay inside Notes as [Book ahead].)
+   - Day        day number, 1 = first day of the trip. Left empty = same day as the row above.
+   - Date       YYYY-MM-DD (also YYYY/M/D). Fills itself from Day in the Excel files. Wins over Day when both are given.
    - Time       free text; 9:00, 9am and 9:30pm are normalised to 09:00 / 09:00 / 21:30.
-   - Category   one tag: base, sights, food, fashion, shopping, pokemon, slowpoke (the label also works).
-   - Map place  name of the pin on the map. Reused if a place with that name exists, otherwise created.
+   - Type       Flight, Train, Transfer, Hotel & stay, Food & drink, Sights & culture, Activity & tour, Shopping, Fashion & cosmetics,
+                Hobby & collectibles, Special interest, Free time, Other (label, key or a common word). Empty = guessed from the Stop name.
+   - Stop       what you do (the stop's name). Falls back to Location when empty.
+   - Location   where: the pin on the map. Reused if a place with that name exists, otherwise created.
+   - Location link / Coordinates   optional Google Maps link and "lat, lon" for a new Location.
    - Notes      free text. Predefined tags are written as [Book ahead].
-   - Lat, Lon   optional; give a new place a pin.
    - Day title, Area   optional; fill in a day's title / area when the day has none yet.
-   - Hours, Link       optional; fill in a place's opening hours / link when the place has none yet.
-   A day with no stops is exported as a row with only Date, Day (and Day title / Area), so the day survives a round trip.
-   Import flow: choose file -> preview every row (new / already there / error) -> confirm. Nothing is saved before confirming. */
+   - Hours, Website    optional; fill in a place's opening hours / link when the place has none yet.
+   A day with no stops is exported as a row with only Day, Date (and Day title / Area), so the day survives a round trip.
+   Import flow: choose file -> preview every row (new / already there / error) -> confirm. Nothing is saved before confirming.
+   Older files (Category, Title, Map place, Lat, Lon, Link) are still understood. */
 
-const CSV_COLS = ['Date', 'Time', 'Category', 'Day', 'Title', 'Map place', 'Notes', 'Lat', 'Lon', 'Day title', 'Area', 'Hours', 'Link'];
-const CSV_TEXT_COLS = ['Time', 'Title', 'Map place', 'Notes', 'Day title', 'Area', 'Hours', 'Link'];
+const CSV_COLS = ['Day', 'Date', 'Time', 'Type', 'Stop', 'Location', 'Location link', 'Coordinates', 'Notes', 'Day title', 'Area', 'Hours', 'Website'];
+// What import works with internally (CSV_COLS and the older names are both turned into this by csvNormalize).
+const CSV_IN = ['Date', 'Time', 'Category', 'Day', 'Title', 'Map place', 'Notes', 'Lat', 'Lon', 'Day title', 'Area', 'Hours', 'Link', 'Gmaps'];
 const CSV_TIME_TAGS = [['Morning', '09:00'], ['Lunch', '12:00'], ['Afternoon', '15:00'], ['Dinner', '18:30'], ['Evening', '20:00']];
 const CSV_NOTE_TAGS = ['Book ahead', 'Cash only', 'Check hours', 'Closed Mon', 'Queue early', 'Photo spot', 'Rain plan', 'Tax-free'];
 const CSV_ALIASES = {
-  date: 'Date', time: 'Time', category: 'Category', cat: 'Category', day: 'Day', 'day no': 'Day', 'day #': 'Day', 'day number': 'Day',
-  title: 'Title', stop: 'Title', name: 'Title', 'map place': 'Map place', mapplace: 'Map place', place: 'Map place', location: 'Map place',
+  date: 'Date', time: 'Time', type: 'Category', category: 'Category', cat: 'Category', day: 'Day', 'day no': 'Day', 'day #': 'Day', 'day number': 'Day',
+  stop: 'Title', title: 'Title', name: 'Title', activity: 'Title', location: 'Map place', 'map place': 'Map place', mapplace: 'Map place', place: 'Map place',
+  'location link': 'Gmaps', 'maps link': 'Gmaps', 'google maps': 'Gmaps', gmaps: 'Gmaps', coordinates: 'Coords', coords: 'Coords', 'lat, lon': 'Coords',
   notes: 'Notes', note: 'Notes', memo: 'Notes', lat: 'Lat', latitude: 'Lat', lon: 'Lon', lng: 'Lon', long: 'Lon', longitude: 'Lon',
   'day title': 'Day title', daytitle: 'Day title', 'day name': 'Day title', area: 'Area', district: 'Area', 'day area': 'Area',
-  hours: 'Hours', 'opening hours': 'Hours', link: 'Link', url: 'Link', website: 'Link'
+  hours: 'Hours', 'opening hours': 'Hours', website: 'Link', link: 'Link', url: 'Link', 'tag 1': 'Tag1', 'tag 2': 'Tag2', 'tag 3': 'Tag3'
 };
+const csvHeadOf = v => CSV_ALIASES[String(v ?? '').trim().toLowerCase()] || '';
 const CSV_MAX_BYTES = 2e6, CSV_PREVIEW_ROWS = 150;
 
 /* ---------- CSV text <-> rows ---------- */
@@ -50,39 +58,96 @@ const csvUnguard = x => /^'[=+\-@]/.test(x) ? x.slice(1) : x;
 const csvField = v => { const x = String(v ?? ''); return /[",\r\n]/.test(x) || x !== x.trim() ? `"${x.replace(/"/g, '""')}"` : x; };
 const csvText = rows => '\ufeff' + [CSV_COLS, ...rows].map(r => r.map(csvField).join(',')).join('\r\n') + '\r\n';
 
-/* ---------- trip -> rows ---------- */
+/* ---------- trip -> records -> rows (shared with the Excel export in xlsx.js) ---------- */
+const csvHhmm = v => { const x = String(v || '').trim(), m = x.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i); if (!m) return x;
+  let h = +m[1]; const mm = m[2] || '00', ap = m[3]?.toLowerCase(); if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0; return h < 24 && +mm < 60 ? `${String(h).padStart(2, '0')}:${mm}` : x; };
+// A place's coordinates: its pin, else decoded from its pasted Google Maps link, else null.
+function csvCoords(spot) {
+  if (!spot) return null;
+  if (hasCoords(spot)) return { lat: spot.lat, lon: spot.lon };
+  if (spot.gmaps) { const p = parseGmapsLink(spot.gmaps); if (Number.isFinite(p.lat) && Number.isFinite(p.lon)) return { lat: p.lat, lon: p.lon }; }
+  return null;
+}
+// One record per stop, in trip order. A day with no stops gets one record of its own so the day is not lost.
+// Day title / Area are written on the first stop of each day only.
+function csvRecords(tr) {
+  const recs = [];
+  tr.days.forEach((d, i) => {
+    if (!d.items.length) { recs.push({ day: i + 1, date: d.date, dayTitle: d.title || '', area: d.place || '', empty: true }); return; }
+    d.items.forEach((it, k) => {
+      const s = it.spotId && tr.spots.find(x => x.id === it.spotId) || null, c = csvCoords(s);
+      recs.push({ day: i + 1, date: d.date, time: csvHhmm(it.time), cat: stopCat(tr, it), title: it.title || '', place: s ? s.name : '',
+        gUrl: s ? (s.gmaps || (c ? `https://www.google.com/maps/search/?api=1&query=${c.lat},${c.lon}` : gmapsPlaceUrl(s))) : '', coords: c,
+        note: (it.note || '').trim(), dayTitle: k ? '' : d.title || '', area: k ? '' : d.place || '', hours: s ? s.hours || '' : '', link: s ? s.link || '' : '', first: k === 0 });
+    });
+  });
+  return recs;
+}
+const csvCoordText = c => c ? `${c.lat.toFixed(6)}, ${c.lon.toFixed(6)}` : '';
 function csvRowsFromTrip(tr) {
   const rows = [], g = csvGuard;
-  // Tidy layout: one block per day, an empty line between days, day title / area only on the day's first row,
-  // times as 24h HH:MM, coordinates to 6 decimals. Import ignores empty lines and repeats, so the file round-trips.
-  const hhmm = v => { const x = String(v || '').trim(), m = x.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i); if (!m) return x;
-    let h = +m[1]; const mm = m[2] || '00', ap = m[3]?.toLowerCase(); if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0; return h < 24 && +mm < 60 ? `${String(h).padStart(2, '0')}:${mm}` : x; };
-  const deg = v => Number.isFinite(+v) && v !== '' ? (+v).toFixed(6) : '';
-  tr.days.forEach((d, i) => {
-    const dm = [g(d.title), g(d.place)], none = ['', ''];
-    if (i) rows.push(CSV_COLS.map(() => ''));
-    if (!d.items.length) rows.push([d.date, '', '', i + 1, '', '', '', '', '', ...dm, '', '']);
-    d.items.forEach((it, k) => {
-      const s = it.spotId && tr.spots.find(x => x.id === it.spotId), pin = s && hasCoords(s);
-      rows.push([d.date, g(hhmm(it.time)), s ? s.cat : '', i + 1, g(it.title), s ? g(s.name) : '', g(it.note), pin ? deg(s.lat) : '', pin ? deg(s.lon) : '', ...(k ? none : dm), s ? g(s.hours) : '', s ? g(s.link) : '']);
-    });
+  // One block per day with an empty line between days. Import ignores empty lines and repeats, so the file round-trips.
+  csvRecords(tr).forEach((r, i, all) => {
+    if (r.first || r.empty) { if (i) rows.push(CSV_COLS.map(() => '')); }
+    rows.push([r.day, r.date, g(r.time || ''), r.cat ? CATS[r.cat].label : '', g(r.title || ''), g(r.place || ''), r.gUrl || '', g(csvCoordText(r.coords)), g(r.note || ''), g(r.dayTitle), g(r.area), g(r.hours || ''), g(r.link || '')]);
   });
   return rows;
 }
-const csvTemplateRows = tr => {
-  const d1 = tr.days[0]?.date || todayIso(), d2 = tr.days[1]?.date || addDays(d1, 1), e = ['', ''];
-  return [[d1, '09:00', 'base', 1, 'Hotel check-in', 'Hotel name', 'Leave bags if early [Check hours]', '', '', 'Arrival day', 'Station area', '', ''],
-    [d1, '12:00', 'food', 1, 'Lunch', 'Restaurant name', '[Book ahead] [Cash only]', '', '', ...e, '11:00-14:00', ''],
-    [d2, '15:00', 'sights', 2, 'Walk around the old town', '', '[Photo spot]', '', '', 'Old town', '', '', ''],
-    [addDays(d2, 1), '', '', 3, '', '', '', '', '', 'Free day', '', '', '']];
-};
+/* The sample: a small made-up trip that uses every Type once or twice, so the sample file looks like a real export.
+   Returns records like csvRecords(). Dates come from the sheet's Day column, so only Day is needed here. */
+const CSV_SAMPLE = [
+  [1, '09:10', 'flight', 'Land at Narita (flight JL740)', 'Narita Airport Terminal 2', '35.764700, 140.386400', 'Passport + visit-Japan QR ready', [], 'Arrival day', 'Narita → Asakusa', '', ''],
+  [1, '11:00', 'train', 'Narita Express to Tokyo', 'Tokyo Station', '35.681200, 139.767100', 'Reserved seat, about 55 min', [], '', '', '', ''],
+  [1, '14:00', 'base', 'Hotel check-in', 'Asakusa Hotel', '', 'Leave bags if the room is not ready', ['Check hours'], '', '', 'Check-in from 15:00', ''],
+  [1, '16:00', 'sights', 'Senso-ji Temple walk', 'Senso-ji', '35.714800, 139.796700', 'Nakamise street snacks on the way', ['Photo spot'], '', '', '', 'https://www.senso-ji.jp/'],
+  [1, '19:00', 'food', 'Tempura dinner', 'Daikokuya Tempura', '35.712700, 139.795400', '', ['Cash only', 'Queue early'], '', '', '11:00-20:30', ''],
+  [2, '10:00', 'transfer', 'Metro to Shibuya', 'Shibuya Station', '35.658000, 139.701600', 'Ginza Line, about 30 min', [], 'Shopping day', 'Shibuya', '', ''],
+  [2, '11:00', 'fashion', 'Fashion browsing', 'Shibuya 109', '35.659500, 139.698600', 'Ask about tax-free at the counter', ['Tax-free'], '', '', '10:00-21:00', ''],
+  [2, '13:00', 'food', 'Ramen lunch', '', '', 'Order at the ticket machine', ['Queue early'], '', '', '', ''],
+  [2, '15:00', 'pokemon', 'Card shop stop', '', '', 'Singles and sealed boxes', [], '', '', '', ''],
+  [2, '17:30', 'activity', 'teamLab Planets', 'teamLab Planets', '35.649100, 139.789800', 'Barefoot, bring shorts', ['Book ahead'], '', '', '', ''],
+  [2, '21:00', 'free', 'Free time at the hotel', '', '', '', [], '', '', '', ''],
+  [3, '08:00', 'base', 'Hotel check-out', 'Asakusa Hotel', '', 'Leave the key at the desk', [], 'Departure day', 'Tokyo → Narita', '', ''],
+  [3, '09:30', 'transfer', 'Airport limousine bus', '', '', '', ['Rain plan'], '', '', '', ''],
+  [3, '12:30', 'flight', 'Flight home', 'Narita Airport Terminal 2', '35.764700, 140.386400', 'Be at the airport 2 h early', [], '', '', '', ''],
+  [3, '', 'other', 'Return pocket Wi-Fi', '', '', 'Drop it in the box at the airport', [], '', '', '', '']
+];
+function csvSampleRecords() {
+  return CSV_SAMPLE.map(([day, time, cat, title, place, coords, note, tags, dayTitle, area, hours, link]) => {
+    const m = /^(-?[\d.]+),\s*(-?[\d.]+)$/.exec(coords);
+    return { day, time, cat, title, place, coords: m ? { lat: +m[1], lon: +m[2] } : null, gUrl: '', note, tags, dayTitle, area, hours, link };
+  });
+}
 const csvFilename = (tr, kind) => `${slug(tr.name)}-itinerary${kind ? '-' + kind : ''}.csv`;
 
+/* ---------- any file layout -> the internal grid (CSV_IN) ----------
+   Accepts this app's CSV / Excel layout, older CSVs (Category, Title, Map place, Lat, Lon, Link) and the first Excel export layout
+   (Type, Location, Location link, Coordinates, Notes). Coordinates "35.68, 139.69" are split into Lat / Lon, a Google Maps link in
+   Location link gives coordinates when it carries them, and Tag 1-3 become [Tag] in the note. */
+function csvNormalize(grid) {
+  const head = grid[0].map(csvHeadOf), at = n => head.indexOf(n);
+  // First Excel export: no Stop column, so Location was the stop's name and only places with a pin were real places.
+  const oldExport = at('Title') < 0 && at('Map place') >= 0 && (at('Gmaps') >= 0 || at('Coords') >= 0);
+  const out = [CSV_IN.slice()];
+  grid.slice(1).forEach(r => {
+    const get = n => at(n) < 0 ? '' : String(r[at(n)] ?? '').trim(), o = Object.fromEntries(CSV_IN.map(c => [c, get(c)]));
+    if (!o.Lat && !o.Lon && at('Coords') >= 0) { const m = /(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)/.exec(csvUnguard(get('Coords'))); if (m) { o.Lat = m[1]; o.Lon = m[2]; } }
+    if (o.Gmaps) { o.Gmaps = csvUnguard(o.Gmaps); if (!/^https?:\/\//i.test(o.Gmaps)) o.Gmaps = '';
+      else if (!o.Lat && !o.Lon) { const p = parseGmapsLink(o.Gmaps); if (Number.isFinite(p.lat) && Number.isFinite(p.lon)) { o.Lat = String(p.lat); o.Lon = String(p.lon); } } }
+    const tags = ['Tag1', 'Tag2', 'Tag3'].map(get).filter(Boolean).map(x => /^\[.*\]$/.test(x) ? x : `[${x}]`).filter(x => !o.Notes.includes(x));
+    if (tags.length) o.Notes = [o.Notes, ...new Set(tags)].filter(Boolean).join(' ');
+    if (oldExport && !o.Lat && !o.Lon && o['Map place']) { o.Title = o['Map place']; o['Map place'] = ''; }
+    out.push(CSV_IN.map(c => o[c]));
+  });
+  return out;
+}
+
 /* ---------- rows -> trip ---------- */
-const csvCategory = raw => {
-  const v = String(raw || '').trim().toLowerCase(); if (!v) return { cat: 'sights' };
-  const hit = Object.keys(CATS).find(k => k === v || CATS[k].label.toLowerCase() === v);
-  return hit ? { cat: hit } : { cat: 'sights', bad: raw.trim() };
+// The Type cell -> a type key. Empty or unknown: guessed from the stop's words (an unknown word is also reported).
+const csvCategory = (raw, title, spot, note) => {
+  const text = String(raw || '').trim(), hit = catFromText(text);
+  if (hit) return { cat: hit };
+  return { cat: guessStopCat(title, spot, note), bad: text };
 };
 const csvDate = raw => {
   const m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(String(raw || '').trim()); if (!m) return '';
@@ -102,8 +167,9 @@ const csvTime = raw => {
    A stop is "already there" when the day, time, title and place match one that was in the trip before the import,
    so re-importing an export changes nothing, while two identical lines inside one file both come in. */
 function csvImportRows(tr, grid) {
-  const head = grid[0].map(h => CSV_ALIASES[String(h).trim().toLowerCase()] || ''), col = n => head.indexOf(n);
-  if (col('Date') < 0 && col('Day') < 0 && col('Title') < 0) throw Error('Header row not recognised. Use the template columns.');
+  if (!grid[0].some(h => ['Date', 'Day', 'Title', 'Map place'].includes(csvHeadOf(h)))) throw Error('Header row not recognised. Use the template columns.');
+  grid = csvNormalize(grid);
+  const head = grid[0], col = n => head.indexOf(n);
   const out = { added: 0, skipped: 0, newDays: 0, dayInfo: 0, problems: [], rows: [] }, base = tr.days.slice(), pool = new Map();
   const poolOf = d => { if (!pool.has(d.id)) pool.set(d.id, d.items.slice()); return pool.get(d.id); };
   const newDay = date => { const d = { id: uid('d'), date, title: '', place: '', items: [] }; tr.days.push(d); out.newDays++; return d; };
@@ -126,25 +192,29 @@ function csvImportRows(tr, grid) {
       if (out.newDays > daysBefore || out.dayInfo > infoBefore) log('day', d, `Day ${tr.days.indexOf(d) + 1}`, [d.title, d.place].filter(Boolean).join(' · '));
       return;
     }
-    const { cat, bad } = csvCategory(v('Category')); if (bad) out.problems.push(`Row ${line}: category “${bad}” is unknown, used sights`);
-    const warn = [bad ? `category “${bad}” → sights` : ''];
+    const note = csvUnguard(String(r[col('Notes')] ?? '').trim()).slice(0, 1500);
+    const known = v('Map place') ? tr.spots.find(s => s.name.trim().toLowerCase() === v('Map place').toLowerCase()) : null;
+    const { cat, bad } = csvCategory(v('Category'), title, known || (v('Map place') ? { name: v('Map place') } : null), note);
+    if (bad) out.problems.push(`Row ${line}: type “${bad}” is not a known type, used ${CATS[cat].label}`);
+    const warn = [bad ? `type “${bad}” → ${CATS[cat].label}` : ''];
     let spot = null;
     if (v('Map place')) {
       const key = v('Map place').toLowerCase(), hasPin = v('Lat') !== '' || v('Lon') !== '', lat = parseFloat(v('Lat')), lon = parseFloat(v('Lon'));
       const pinOk = Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
       if (hasPin && !pinOk) { out.problems.push(`Row ${line}: Lat/Lon “${v('Lat')}, ${v('Lon')}” is not a valid coordinate, no pin added`); warn.push('invalid Lat/Lon'); }
-      spot = tr.spots.find(s => s.name.trim().toLowerCase() === key);
+      spot = known;
       if (!spot) { spot = { id: uid('p'), name: v('Map place').slice(0, 160), jp: '', city: '', cat, note: '', hours: '', link: '', gmaps: '', days: [] }; tr.spots.push(spot); }
       if (!hasCoords(spot) && pinOk) { spot.lat = lat; spot.lon = lon; }
+      if (v('Gmaps') && !spot.gmaps && !/\/maps\/search\/\?api=1&query=/.test(v('Gmaps'))) spot.gmaps = v('Gmaps').slice(0, 800);
       if (v('Hours') && !spot.hours) spot.hours = v('Hours').slice(0, 120);
       if (v('Link') && !spot.link) spot.link = /^https?:\/\//i.test(v('Link')) ? v('Link').slice(0, 500) : '';
       if (!spot.days.includes(d.id)) spot.days.push(d.id);
     }
-    const time = csvTime(v('Time')), note = String(r[col('Notes')] ?? '').trim().slice(0, 1500), spotId = spot ? spot.id : '';
+    const time = csvTime(v('Time')), spotId = spot ? spot.id : '';
     const live = poolOf(d), hit = live.findIndex(it => it.time === time && it.title === title && (it.spotId || '') === spotId);
-    const detail = [spot && spot.name !== title ? spot.name : '', ...warn].filter(Boolean).join(' · ');
+    const detail = [CATS[cat].label, spot && spot.name !== title ? spot.name : '', ...warn].filter(Boolean).join(' · ');
     if (hit >= 0) { live.splice(hit, 1); out.skipped++; return log('skip', d, title, detail); }
-    d.items.push({ id: uid('i'), time, title, note, spotId }); out.added++; log('new', d, title, detail);
+    d.items.push({ id: uid('i'), time, title, note, spotId, cat }); out.added++; log('new', d, title, detail);
   });
   tr.days.sort((a, b) => a.date.localeCompare(b.date));
   return out;
@@ -207,13 +277,13 @@ function csvImportSheet(tr) {
   openSheet({
     title: t('Import from file'), submit: null,
     body: `<ol class="csv-steps">
-        <li><b>${t('Download the blank template')}</b><small>${t('An Excel file with colours, dropdowns and one row per trip day. Opens in Excel, Numbers and Google Sheets (File → Import → Upload) with the formatting kept.')}</small>
-          <small>${t('Quick entry is built in: pick Time, Category, Map place and up to three Tags from dropdowns.')}</small>
+        <li><b>${t('Download the blank template')}</b><small>${t('An Excel file laid out exactly like Export Excel, with colours, dropdowns and ready-made rows for each trip day. Opens in Excel, Numbers and Google Sheets (File → Import → Upload) with the formatting kept.')}</small>
+          <small>${t('Almost nothing to type: Date fills itself from Day, and Time, Type, Location and up to three Tags are dropdowns. Leave Type empty and it is guessed from the Stop name.')}</small>
           <button type="button" class="primary" data-csv="xlsx-blank">${t('Download Excel / Sheets template')}</button></li>
         <li><b>${t('Import the filled-in file')}</b><small>${t('Choose the .xlsx (in Google Sheets: File → Download → Microsoft Excel) or a .csv. You see a preview before anything is saved.')}</small>
           <button type="button" data-csv="import">${t('Choose file')}</button></li></ol>
-      <p class="field-hint"><button type="button" class="text-btn" data-csv="xlsx-sample">${t('Download sample Excel / Sheets template')}</button> ${t('shows filled-in example rows.')}</p>
-      <p class="field-hint">${t('Columns')}: ${CSV_COLS.join(' · ')}. ${t('Export and import use the same columns, so an exported file can be edited and imported again. Importing only adds; stops already in the trip are skipped. You see a preview before anything is saved.')}</p>
+      <p class="field-hint"><button type="button" class="text-btn" data-csv="xlsx-sample">${t('Download sample Excel / Sheets template')}</button> ${t('shows a filled-in example trip with every type.')}</p>
+      <p class="field-hint">${t('Columns')}: ${CSV_COLS.join(' · ')}. ${t('Export Excel, Export CSV, the template and the sample all use these columns, so an exported file can be edited and imported again. Importing only adds; stops already in the trip are skipped. You see a preview before anything is saved.')}</p>
       <div id="csv-preview"></div>`,
     onOpen: root => {
       const g = id => root.querySelector('#' + id);

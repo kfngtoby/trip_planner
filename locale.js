@@ -157,3 +157,9 @@ Object.assign(ZH,{'Receipt photo':'收據相片','Zoom':'放大','Picked by you'
 Object.assign(ZH,{'File ready':'檔案已準備好','Save or share file':'儲存或分享檔案','Could not open the share sheet.':'無法開啟分享選單。','Download the blank template':'下載空白範本','Headers and one empty row per trip day. Fill it in with Excel, Numbers or Google Sheets, then save as CSV.':'含標題列，每個行程日一行空白。用 Excel、Numbers 或 Google 試算表填寫後，另存為 CSV。','Download blank template':'下載空白範本','Import the filled-in file':'匯入已填好的檔案','You see a preview before anything is saved.':'儲存前會先顯示預覽。','shows filled-in example rows.':'會顯示已填好的示例。','Could not load the Excel library. Try again in a moment.':'無法載入 Excel 元件，請稍後再試。'});
 
 Object.assign(ZH,{'Import / template':'匯入／範本','Import from file':'從檔案匯入','Download Excel / Sheets template':'下載 Excel／Google 試算表範本','Plain CSV template instead':'改用純 CSV 範本','Choose file':'選擇檔案','Reading Excel…':'正在讀取 Excel…','An Excel file with colours, dropdowns and one row per trip day. Opens in Excel, Numbers and Google Sheets (File → Import → Upload) with the formatting kept.':'附顏色與下拉選單的 Excel 檔，每個旅程日一列。可在 Excel、Numbers、Google 試算表（檔案 → 匯入 → 上傳）開啟，格式會保留。','Choose the .xlsx (in Google Sheets: File → Download → Microsoft Excel) or a .csv. You see a preview before anything is saved.':'選擇 .xlsx（Google 試算表：檔案 → 下載 → Microsoft Excel）或 .csv。儲存前會先預覽。'});
+
+Object.assign(ZH,{
+  'Flight':'航班','Train':'火車','Transfer':'接駁交通','Hotel & stay':'住宿','Food & drink':'餐飲','Sights & culture':'景點・文化','Activity & tour':'活動・旅遊團',
+  'Hobby & collectibles':'興趣・收藏','Special interest':'特別主題','Free time':'自由活動','Other':'其他','Type':'類型','Auto':'自動',
+  'Download Excel / Sheets template':'下載 Excel / Sheets 範本','Download sample Excel / Sheets template':'下載 Excel / Sheets 範例'
+});

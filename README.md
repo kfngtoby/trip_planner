@@ -25,16 +25,16 @@ Two toolbar buttons on the Days tab. **Export CSV** downloads the whole itinerar
 
 | Column | Meaning |
 |---|---|
-| Date | `YYYY-MM-DD` (`YYYY/M/D` also works). Wins over Day when both are filled |
+| Day | Day number, 1 = first day. Empty = same day as the row above |
+| Date | `YYYY-MM-DD` (`YYYY/M/D` also works). Wins over Day when both are filled. Fills itself in the Excel files |
 | Time | Free text. `9:00`, `9am`, `9:30pm` are normalised to `09:00`, `09:00`, `21:30` |
-| Category | `base`, `sights`, `food`, `fashion`, `shopping`, `pokemon`, `slowpoke` (the label also works) |
-| Day | Day number, 1 = first day |
-| Title | Stop name (falls back to Map place when empty) |
-| Map place | Name of the pin. An existing place with that name is reused, otherwise a new one is created |
-| Notes | Free text. Predefined tags are written as `[Book ahead]`, `[Cash only]`, `[Check hours]`, `[Closed Mon]`, `[Queue early]`, `[Photo spot]`, `[Rain plan]`, `[Tax-free]` |
-| Lat, Lon | Optional; give a new place a map pin (must be a valid coordinate) |
+| Type | Flight, Train, Transfer, Hotel & stay, Food & drink, Sights & culture, Activity & tour, Shopping, Fashion & cosmetics, Hobby & collectibles, Special interest, Free time, Other (label, key or a common word). Empty = guessed from the Stop |
+| Stop | What you do (the stop's name). Falls back to Location when empty |
+| Location | Name of the pin. An existing place with that name is reused, otherwise a new one is created |
+| Location link, Coordinates | Optional Google Maps link and `lat, lon` for a new Location |
+| Notes | Free text. Predefined tags are written as `[Book ahead]`, `[Cash only]`, `[Check hours]`, `[Closed Mon]`, `[Queue early]`, `[Photo spot]`, `[Rain plan]`, `[Tax-free]` (Excel files have Tag 1-3 columns for them) |
 | Day title, Area | Optional; fill a day's title / area when it has none yet |
-| Hours, Link | Optional; fill a place's opening hours / `http(s)` link when it has none yet |
+| Hours, Website | Optional; fill a place's opening hours / `http(s)` link when it has none yet |
 
 - **Import** is preview-first: the chosen file is checked on a copy of the trip and every row is listed as *New*, *Already there*, *New day* or *Error*, with counts. Nothing is saved until you press *Import N stops*; Undo is offered afterwards.
 - Import only adds. A stop with the same day, time, title and place as one already in the trip is skipped, so re-importing an export changes nothing; two identical lines inside one file both come in. New dates create new days. Existing day titles, areas, place hours and links are never overwritten.
@@ -45,13 +45,15 @@ Two toolbar buttons on the Days tab. **Export CSV** downloads the whole itinerar
 - Not in the CSV: expenses, place photos and other place details. Use *Export trip backup* for a full copy.
 
 
-### Excel export (`xlsx.js`)
-**Export Excel** sits next to Export CSV on the Days tab and downloads an `.xlsx` styled like the Voyana itinerary template (Itinerary + Trip Info sheets). It is a report only: there is no Excel import, and the CSV export is unchanged.
+### Excel and CSV (`csv.js`, `xlsx.js`)
+Export Excel, Export CSV, the blank template and the sample are **one layout**, so a template looks exactly like an export and any of them can be edited and imported again (the Import dialog previews every row before saving; it only adds).
 
-Columns: Day · Date · Time · Type · Location · Location link · Coordinates · Notes.
+Columns: Day · Date · Time · Type · Stop · Location · Location link · Coordinates · Notes · (Excel only: Tag 1-3) · Day title · Area · Hours · Website.
 
-- Date is a formula off the Trip Info start date when the trip's days are consecutive, otherwise plain dates.
-- Type comes from the place's category (`XLSX_TYPE_BY_CAT` in `xlsx.js`: base → Hotel, food → Meal, everything else → Activity). Stops with no place, or at a Hotels & transport place, are sorted by words in the title (`XLSX_TYPE_WORDS`: Flight, Train, Transfer, Hotel, Meal, Free time). The dropdown list lives on Trip Info.
+- Least typing: **Day** (number), **Time** (dropdown), **Type** (dropdown) and **Stop** are the green columns. **Date** is a formula off the Trip Info start date. **Location** is a dropdown of saved places (or type a new one). **Type** can stay empty: it is guessed from the Stop name, and every guess is shown in the import preview. Day empty = same day as the row above.
+- The blank template has 5 ready rows per trip day; the sample is a small made-up trip that uses every type.
+- **Types** (`CATS` in `store.js`): Flight, Train, Transfer, Hotel & stay, Food & drink, Sights & culture, Activity & tour, Shopping, Fashion & cosmetics, Hobby & collectibles, Special interest, Free time, Other. Keys are stored in saved trips and never change (`base` = Hotel & stay, `pokemon` = Hobby & collectibles, `slowpoke` = Special interest); only labels do. Each stop can carry its own type (`cat` on the stop, optional); with none set, `guessStopCat()` decides from the title, the place and the notes (flight numbers, "→" legs, check-in / out, meal words, ...). Common words and older names ("Meal", "Hotels & transport") are accepted on import (`CAT_ALIASES`).
+- Older files (Category, Title, Map place, Lat, Lon, Link) and the first Excel export are still understood (`csvNormalize`).
 - Coordinates come from the place's pin, or are decoded from a long Google Maps link, and link to OpenStreetMap. Short `maps.app.goo.gl` links cannot be decoded in the browser; give the place a pin instead.
 - ExcelJS is vendored in `vendor/` (MIT), loaded on the first export, and cached by the service worker for offline use. If that copy can't be loaded, cdnjs and then jsDelivr are tried.
 
@@ -84,7 +86,7 @@ Curated shops by city and district, nearest first, one branch per chain. **More 
 | `store.js` | Data layer (localStorage), money in integer cents, Google Maps link builders, geocoding |
 | `app.js` | Router, home screen, trip header, Days tab |
 | `places.js` | Overview map (Leaflet), week bar and day slider, place editor, Add place |
-| `csv.js` | Days tab CSV import, export and quick-entry template |
+| `csv.js` | Days tab CSV / Excel import, CSV export, shared column layout |
 | `discovery.js` | Find food (Tabelog search builder) / Find shopping (OpenStreetMap) |
 | `reco.js`, `fashion-catalog.js` | Fashion suggestions and curated catalog |
 | `locate.js` | Find a place from title, hint and photos (OCR, optional Google Vision, Nominatim + Overpass) |
@@ -124,10 +126,10 @@ Setup:
 
 
 ### Excel / Google Sheets template (`xlsx.js`)
-CSV cannot carry formatting, so **Days → Import / template → Download Excel / Sheets template** gives a formatted `.xlsx`: coloured header, frozen header row, filters, a Category dropdown, number checks for Day / Lat / Lon, one pre-dated row per trip day, a *How to fill* tab and a *Lists* tab.
+CSV cannot carry formatting, so **Days → Import / template → Download Excel / Sheets template** gives a formatted `.xlsx` laid out exactly like **Export Excel**: coloured header, frozen header row, dropdowns for Day / Time / Type / Location / Tags, Date filled by formula, five ready rows per trip day, plus *Trip Info*, *How to fill* and *Lists* tabs. **Download sample** is the same file filled with a small example trip that uses every type.
 
-- **Excel / Numbers**: open, fill the *Stops* tab, save as `.xlsx`.
+- **Excel / Numbers**: open, fill the *Itinerary* tab, save as `.xlsx`.
 - **Google Sheets**: File → Import → Upload the template (Replace spreadsheet). Colours and dropdowns come with it. When done: File → Download → Microsoft Excel (.xlsx).
 - **Back in the app**: Import / template → Choose file → pick the `.xlsx` (or a `.csv`). The same preview-first import runs; nothing is saved until you confirm.
-- The reader finds the header row by itself, accepts times typed as 9:00 or stored as real times, real or text dates, and also reads this app's own **Export Excel** file (Type and Coordinates columns included).
+- The reader finds the header row by itself, accepts times typed as 9:00 or stored as real times, real or text dates, and also reads this app's own **Export Excel** file (all columns included; older exports are understood too).
 - The plain CSV template is still there as a fallback.

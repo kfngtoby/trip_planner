@@ -5,15 +5,105 @@
 
 const STORE_KEY = 'trip-companion-v3';
 
+/* Stop / place types. One list is used everywhere: the stop badge, map chips, the Type dropdown in Excel and the importers.
+   Built from the plan types that trip planners such as TripIt and Travefy use (flight, rail, ground transport, lodging, restaurant,
+   activity / tour / show) plus sightseeing, shopping and free time. Keys never change (they are stored in saved trips);
+   only labels may. `base` keeps its old key but now means "Hotel & stay"; stations and airports have their own types. */
 const CATS = {
-  base:    { label: 'Hotels & transport', color: '#5b6472', icon: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>' },
-  sights:  { label: 'Photos & Christmas', color: '#2f8a5b', icon: '<path d="M4 8h3l1.5-2.5h7L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/>' },
-  food:    { label: 'Restaurants',        color: '#d9692b', icon: '<path d="M5 3v5a3 3 0 0 0 6 0V3M8 3v18M17 21V3c-2.7 1.5-3.5 5-3.5 8H17"/>' },
-  fashion: { label: 'Fashion & cosmetics',color: '#8a57c9', icon: '<path d="M5 8h14l-1 13H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>' },
-  shopping:{ label: 'Shopping', color: '#397f85', icon: '<path d="M5 8h14l-1 13H6zM9 8V6a3 3 0 0 1 6 0v2"/>' },
-  pokemon: { label: 'Pokémon & cards',    color: '#c99a06', icon: '<circle cx="12" cy="12" r="9"/><path d="M3 12h5.5M15.5 12H21"/><circle cx="12" cy="12" r="3"/>' },
-  slowpoke:{ label: 'Slowpoke',           color: '#e0528f', icon: '<path d="M12 21s-8-5.5-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.5-8 11-8 11z"/>' }
+  flight:  { label: 'Flight',              color: '#4b5fd1', hint: 'Flights, airport arrival / departure', icon: '<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>' },
+  train:   { label: 'Train',               color: '#2a7ab8', hint: 'Trains, shinkansen, rail stations', icon: '<path d="M7 3h10a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zM4 11h16M8 21l2-4M16 21l-2-4"/><circle cx="8.5" cy="14" r=".6"/><circle cx="15.5" cy="14" r=".6"/>' },
+  transfer:{ label: 'Transfer',            color: '#8b6f47', hint: 'Bus, taxi, ferry, metro, rental car, walking transfer', icon: '<path d="M5 17V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v11M3 17h18M5 17v2M19 17v2M5 11h14"/><circle cx="8.5" cy="14" r=".6"/><circle cx="15.5" cy="14" r=".6"/>' },
+  base:    { label: 'Hotel & stay',        color: '#5b6472', hint: 'Hotel, ryokan, Airbnb, check-in / check-out, luggage drop', icon: '<path d="M3 19V6M3 14h18v5M21 14v-2a3 3 0 0 0-3-3h-7v5"/><circle cx="7" cy="11" r="1.6"/>' },
+  food:    { label: 'Food & drink',        color: '#d9692b', hint: 'Meals, cafés, bars, street food, food tours', icon: '<path d="M5 3v5a3 3 0 0 0 6 0V3M8 3v18M17 21V3c-2.7 1.5-3.5 5-3.5 8H17"/>' },
+  sights:  { label: 'Sights & culture',    color: '#2f8a5b', hint: 'Temples, museums, parks, viewpoints, photo spots, festivals, markets', icon: '<path d="M4 8h3l1.5-2.5h7L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/>' },
+  activity:{ label: 'Activity & tour',     color: '#b5483a', hint: 'Tours, classes, shows, onsen / spa, theme parks, hikes, tickets, events', icon: '<path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/>' },
+  shopping:{ label: 'Shopping',            color: '#397f85', hint: 'Malls, markets, souvenirs, department stores', icon: '<path d="M5 8h14l-1 13H6zM9 8V6a3 3 0 0 1 6 0v2"/>' },
+  fashion: { label: 'Fashion & cosmetics', color: '#8a57c9', hint: 'Clothes, thrift, beauty, drugstores', icon: '<path d="M5 8h14l-1 13H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>' },
+  pokemon: { label: 'Hobby & collectibles',color: '#c99a06', hint: 'Trading cards, anime, games, figures, hobby shops', icon: '<circle cx="12" cy="12" r="9"/><path d="M3 12h5.5M15.5 12H21"/><circle cx="12" cy="12" r="3"/>' },
+  slowpoke:{ label: 'Special interest',    color: '#e0528f', hint: 'A theme you are chasing (stamp rally, manholes, mascots)', icon: '<path d="M12 21s-8-5.5-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.5-8 11-8 11z"/>' },
+  free:    { label: 'Free time',           color: '#8d99a6', hint: 'Rest, buffer, free morning / day', icon: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>' },
+  other:   { label: 'Other',               color: '#9aa0a8', hint: 'Anything else (errands, admin, reminders)', icon: '<circle cx="6" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="18" cy="12" r="1.3"/>' }
 };
+// Words people (and older files) use for a type -> key. Labels and keys are matched first; this list covers the rest.
+const CAT_ALIASES = {
+  flight: 'flight|flights|plane|air|airport|航班|飛機|飞机|飛行機|フライト', train: 'train|rail|railway|shinkansen|jr|火車|火车|電車|新幹線',
+  transfer: 'transfer|transport|transit|bus|taxi|ferry|boat|car|metro|subway|ground transport|ground transportation|移動|接駁|巴士',
+  base: 'hotel|hotels|stay|lodging|accommodation|hostel|ryokan|airbnb|hotels & transport|酒店|住宿|ホテル', food: 'meal|meals|restaurant|restaurants|eat|dining|drink|cafe|café|bar|餐廳|餐厅|食|ごはん',
+  sights: 'sight|sights|sightseeing|attraction|attractions|culture|photos & christmas|photo|景點|景点|観光', activity: 'activity|activities|tour|tours|event|show|experience|ticket|活動|活动|体験',
+  shopping: 'shop|shops|shopping|購物|购物|買い物', fashion: 'fashion|cosmetics|beauty|時裝|美妝', pokemon: 'hobby|hobbies|collectibles|cards|pokémon & cards|pokemon & cards|pokemon|pokémon|寶可夢',
+  slowpoke: 'special|special interest|theme|themed|slowpoke|呆呆獸', free: 'free|free time|rest|break|buffer|自由|休息', other: 'other|misc|miscellaneous|note|其他'
+};
+// Text -> type key ('' when it names no type).
+function catFromText(raw) {
+  const v = String(raw ?? '').trim().toLowerCase(); if (!v) return '';
+  const hit = Object.keys(CATS).find(k => k === v || CATS[k].label.toLowerCase() === v);
+  return hit || Object.keys(CAT_ALIASES).find(k => CAT_ALIASES[k].split('|').includes(v)) || '';
+}
+
+/* Guess a stop's type from its words, so nobody has to pick one. First match wins.
+   "strong" words (flight, train, transfer, check-in/out, travel phrases, free time) beat the place's own type: a ride that
+   ends at a shopping mall is still a train ride. Otherwise a linked place keeps its own type. */
+const CW = {
+  flightNo: /\b(?!(?:AM|PM|JR|NO|ID|TV)\b)[A-Z][A-Z0-9]\s?\d{3,4}\b/,
+  flight: /flight|boarding|take-?off|airline|\bplane\b|航班|飛行機|フライト|登機|登机/i,
+  train: /train|shinkansen|bullet|railway|\brail\b|\bjr\b|limited express|\bexpress\b|\brapid\b|haruka|marine liner|\bmonorail\b|新幹線|特急|電車|列車|火車|火车|高鐵|高铁|鐵路/i,
+  transfer: /transfer|taxi|\bcab\b|\buber\b|\bbus\b|coach|ferry|\bboat\b|cruise|shuttle|metro|subway|\btram\b|rental car|car rental|\bdrive\b|driving|limousine|バス|タクシー|フェリー|地下鉄|移動|接駁|巴士|渡輪|的士|搭車|地鐵/i,
+  travel: /→|⇒|->|\b(?:travel|head|go|return|ride|depart|leave|arrive)\b|\barriv(?:e|al)\b|\bdeparture\b|\bcommute\b|前往|返回|出發|抵達|到達/i,
+  stayIO: /check-?\s?in|check-?\s?out|checkout|luggage (?:drop|deposit|storage)|drop (?:off )?(?:bags|luggage)|入住|退房|チェックイン|チェックアウト/i,
+  free: /free (?:time|day|morning|afternoon|evening)|\brest\b|relax|\bnap\b|buffer|downtime|spare time|自由|空閒|休息|フリー/i,
+  airport: /airport|空港|機場|机场/i,
+  meal: /breakfast|brunch|lunch|dinner|supper|coffee|caf[eé]|ramen|udon|soba|sushi|izakaya|yakiniku|yakitori|tempura|restaurant|bistro|bakery|dessert|snack|street food|food court|buffet|bbq|\bbar\b|\bpub\b|drinks?\b|\btea\b|noodle|pizza|burger|\beat(?:ing)?\b|beef|brewery|cocktail|\bsake\b|早餐|午餐|晚餐|宵夜|餐廳|餐厅|咖啡|拉麵|拉面|ランチ|ディナー|朝食|夕食|居酒屋|カフェ|食堂|美食/i,
+  stayHotel: /hotel|hostel|ryokan|airbnb|lodging|accommodation|guest ?house|宿|ホテル|旅館|酒店|住宿/i,
+  fashion: /parco|marui|\b109\b|uniqlo|\bgu\b|zara|h&m|beams|lumine|fashion|cosmetic|boutique|clothes|clothing|apparel|thrift|vintage|second-?hand|drugstore|beauty|時裝|服飾|美妝|コスメ|古着/i,
+  hobby: /pok[eé]mon|trading cards?|\bcards\b|card (?:shop|store|game)|figure|anime|manga|hobby|collectible|gashapon|トレカ|ポケモン|動漫|公仔|扭蛋/i,
+  fest: /christmas market|night market|flea market|festival|illumination|hatsumode|初詣|祭|夜景/i,
+  activity: /\btours?\b|class|workshop|lesson|experience|onsen|\bspa\b|hot spring|sauna|massage|\bshow\b|concert|theat(?:er|re)|musical|live music|theme park|amusement|aquarium|\bzoo\b|ropeway|cable car|gondola|ticket|karaoke|cooking|\bhike\b|\btrek|\bski\b|snorkel|diving|kayak|surf|cycling|rafting|tasting|stadium|ceremony|体験|体验|温泉|ツアー|遊園地|水族館|演唱會|表演/i,
+  sights: /\bviews?\b|photo|garden|castle|shrine|temple|museum|gallery|\bparks?\b|tower|bridge|\blights?\b|viewpoint|observatory|sunset|sunrise|\bwalk\b|stroll|trail|beach|dunes?|mount|\blake\b|waterfall|old town|historic|monument|palace|cathedral|church|mosque|ruins|market|景點|景点|神社|寺|城|公園|美術館|博物館|庭園|散步|観光/i,
+  shop: /don quijote|donki|aeon|daimaru|takashimaya|isetan|mitsukoshi|hankyu|seibu|center-?gai|shotengai|arcade|\bshop|mall|department store|outlet|souvenir|\bgifts?\b|\bstore\b|\bbuy\b|購物|购物|買い物|ショッピング|百貨|商店街|お土産|伴手禮/i,
+  station: /\bstation\b|駅|站|terminal/i
+};
+function strongCat(text, ctx = '') {
+  const T = String(text || ''), C = `${T} ${ctx}`;
+  if (CW.flightNo.test(T) || CW.flight.test(T)) return 'flight';
+  if (CW.train.test(T)) return 'train';
+  if (CW.transfer.test(T)) return 'transfer';
+  if (CW.travel.test(T)) {                       // "Himeji → Kobe", "Return to the hotel": look for the vehicle in the place name and note
+    if (CW.flightNo.test(C) || CW.flight.test(C)) return 'flight';
+    if (CW.train.test(C)) return 'train';
+    if (CW.transfer.test(C)) return 'transfer';
+    if (/→|⇒|->/.test(T) || /\b(?:travel|head|go|return|ride|depart|leave)\b/i.test(T)) return 'transfer';
+  }
+  if (CW.stayIO.test(T)) return 'base';
+  if (CW.free.test(T)) return 'free';
+  if (CW.airport.test(T)) return 'flight';
+  return '';
+}
+function softCat(text) {
+  const T = String(text || '');
+  if (CW.meal.test(T)) return 'food';
+  if (CW.stayHotel.test(T)) return 'base';
+  if (CW.fashion.test(T)) return 'fashion';
+  if (CW.hobby.test(T)) return 'pokemon';
+  if (CW.fest.test(T)) return 'sights';
+  if (CW.activity.test(T)) return 'activity';
+  if (CW.sights.test(T)) return 'sights';
+  if (CW.shop.test(T)) return 'shopping';
+  return '';
+}
+// title: the stop's name. spot: its linked place (or { name } for one about to be created). note: only read to spot the vehicle of a trip leg.
+function guessStopCat(title, spot, note) {
+  const ctx = [spot && spot.name, note].filter(Boolean).join(' · '), own = spot && CATS[spot.cat] ? spot.cat : '';
+  let c = strongCat(title, ctx); if (c) return c;
+  if (own && own !== 'base') return own;
+  c = softCat(title); if (c) return c;
+  if (spot && spot.name) {                      // a hotel / station place with an unhelpful stop title: the place name decides
+    if (own === 'base' || !own) { c = strongCat(spot.name) || softCat(spot.name); if (c) return c; if (CW.station.test(spot.name)) return 'train'; }
+  }
+  return own || (spot && spot.name ? 'sights' : 'activity');
+}
+// The type shown for a stop: the one the person set, else a guess.
+const stopCat = (tr, it) => CATS[it.cat] ? it.cat : guessStopCat(it.title, it.spotId && tr.spots.find(x => x.id === it.spotId) || null, it.note);
+
 // Fashion sub-categories ("styles") so someone with no idea what to look for can browse by type.
 // brands/prices are typical ranges, not a guarantee that a given stop stocks them.
 const SUB_GROUPS = [
@@ -182,6 +272,10 @@ function loadDb() {
     db = { version: 3, trips: [structuredClone(SEED_TRIP)] };
     saveDb();
   }
+  // Older trips filed stations and airports under "Hotels & transport" (base). Give those places their own type once; hotels stay put.
+  let moved = false;
+  db.trips.forEach(tr => (tr.spots || []).forEach(sp => { if (sp.cat === 'base') { const c = guessStopCat('', { name: sp.name, cat: 'base' }); if (c && c !== 'base') { sp.cat = c; moved = true; } } }));
+  if (moved) saveDb();
   // merge researched places/notes into the example trip (once per trip, never overwrites user edits)
   if (typeof applySeedPatches === 'function' && db.trips.map(applySeedPatches).some(Boolean)) saveDb();
 }

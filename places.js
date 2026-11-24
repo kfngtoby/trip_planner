@@ -573,15 +573,12 @@ function wireAddHeader(root) {
   root.querySelectorAll('[data-sa-src]').forEach(b => b.onclick = () => simpleAdd(b.dataset.saSrc));
 }
 
-// Best-guess category label from the name / text.
+// Best-guess type for a place from its name / text. Themed places (Slowpoke) first, then the shared classifier in store.js
+// (stations -> Train, airports -> Flight, hotels -> Hotel & stay, cafés -> Food & drink, ...). Unknown names are Sights & culture.
 function guessCat(text) {
-  const x = text.toLowerCase();
+  const x = String(text || '').toLowerCase();
   if (/ヤドン|呆呆獸|呆呆兽|slowpoke|yadon/.test(x)) return 'slowpoke';
-  if (/ポケモン|ポケカ|pok[eé]mon|寶可夢|宝可梦|卡牌|カード|card/.test(x)) return 'pokemon';
-  if (/hotel|ホテル|酒店|旅館|旅馆|宿|駅|站|station|空港|機場|机场|airport|港|ferry|渡輪|渡轮/.test(x)) return 'base';
-  if (/餐|食|麵|面|拉麵|拉面|烏冬|乌冬|うどん|鳥|鸟|咖啡|甜|カフェ|寿司|壽司|焼|居酒屋|屋台|cafe|coffee|restaurant|ramen|udon|sushi|bakery|ケーキ|パン/.test(x)) return 'food';
-  if (/服|百貨|百货|商店街|mall|shop|uniqlo|beams|cosme|コスメ|ドラッグ|藥妝|药妆|アパレル|ファッション/.test(x)) return 'fashion';
-  return 'sights';
+  return guessStopCat(text, { name: String(text || '') });
 }
 const cityOf = label => (label || '').split(',').map(z => z.trim()).find((z, i) => i > 0 && /[市町村区]|city|ward/i.test(z)) || '';
 

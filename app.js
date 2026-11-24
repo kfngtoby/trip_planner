@@ -268,13 +268,13 @@ function dayCard(tr, d, i, isOpen) {
     <span class="day-icons"><button type="button" class="icon-btn" data-edit-day="${esc(d.id)}" aria-label="${t('Edit day')}" title="${t('Edit day')}">${PEN}</button><button type="button" class="icon-btn danger" data-del-day="${esc(d.id)}" aria-label="${t('Delete day')}" title="${t('Delete day')}">${TRASH}</button></span></div>
     <div class="day-body" id="body-${esc(d.id)}" ${isOpen ? '' : 'hidden'}>
       ${d.items.length ? `<ol class="stops">${d.items.map((it, ix) => {
-        const s = it.spotId && tr.spots.find(x => x.id === it.spotId);
+        const s = it.spotId && tr.spots.find(x => x.id === it.spotId), k = stopCat(tr, it);
         return `${legHtml(tr, d, ix)}<li class="stop">
           <span class="stop-del" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>${t('Remove')}</span>
           <div class="stop-in has-reorder" data-edit-item="${esc(d.id)}|${esc(it.id)}" data-stop="${esc(d.id)}|${esc(it.id)}">
           <span class="stop-time user-text">${esc(it.time)}</span>
           <div class="stop-main">
-            <button class="stop-title user-text" data-edit-item="${esc(d.id)}|${esc(it.id)}">${s ? `<span class="cat-badge sm" style="--c:${CATS[s.cat]?.color || color}" title="${esc(CATS[s.cat]?.label || '')}">${catIcon(s.cat, 12)}</span>` : ''}<span>${esc(L(it, 'title') || '—')}</span></button>
+            <button class="stop-title user-text" data-edit-item="${esc(d.id)}|${esc(it.id)}"><span class="cat-badge sm" style="--c:${CATS[k].color}" title="${esc(CATS[k].label)}">${catIcon(k, 12)}</span><span>${esc(L(it, 'title') || '—')}</span></button>
             ${it.note ? `<p class="user-text">${esc(L(it, 'note')).replace(/\n/g, '<br>')}</p>` : ''}
             ${s ? `<div class="chips-row"><a class="chip" href="#/trip/${esc(tr.id)}/map" data-focus-spot="${esc(s.id)}"><em class="cat-mini" style="--c:${CATS[s.cat]?.color || color}">${catIcon(s.cat, 15)}</em><span class="user-text">${esc(L(s, 'name'))}</span></a>
               <a class="chip" target="_blank" rel="noopener" href="${esc(gmapsDirectionsUrl(s))}">${t('Directions')}</a></div>` : ''}
@@ -332,6 +332,7 @@ function itemForm(dayId, itemId) {
     body: `<div class="pair pair-time"><label>Time<input name="time" maxlength="40" value="${esc(it.time)}" placeholder="09:00"></label>
       <label>Title<input name="title" required maxlength="160" value="${esc(it.title)}"></label></div>
       <label>Notes<textarea name="note" rows="3" maxlength="1500">${esc(it.note)}</textarea></label>
+      <label>${t('Type')}<select name="cat"><option value="">${t('Auto')}</option>${Object.entries(CATS).map(([k, c]) => `<option value="${k}" ${k === it.cat ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label>
       <div class="place-pick" id="place-pick"><label for="pp-q">${t('Map place')}</label>
         <input type="hidden" name="spotId" value="${esc(it.spotId || '')}">
         <div class="pp-chip" id="pp-chip" hidden></div>
@@ -340,11 +341,19 @@ function itemForm(dayId, itemId) {
         <small class="field-hint">${t('Links this stop to a pin on the map. Leave empty for a plain stop.')}</small></div>
       <label>Day<select name="dayId">${tr.days.map((x, i) => `<option value="${esc(x.id)}" ${x.id === dayId ? 'selected' : ''}>Day ${i + 1} · ${esc(fmtDate(x.date))}</option>`).join('')}</select></label>
       <p class="field-hint">${itemId ? t('Reorder: drag the ⠿ handle on the Days tab. Remove: tap the bin or swipe the stop to the right.') : ''}</p>`,
-    onOpen: root => { placePicker(root, tr, pending); if (!itemId) root.querySelector('[name=title]').focus(); },
+    onOpen: root => {
+      placePicker(root, tr, pending); if (!itemId) root.querySelector('[name=title]').focus();
+      // "Auto" shows what the type would be guessed as, and follows the title, notes and place while typing.
+      const sel = root.querySelector('[name=cat]'), auto = sel.options[0], val = n => root.querySelector(`[name=${n}]`).value;
+      const upd = () => { const id = val('spotId'), sp = (pending.spot && pending.spot.id === id ? pending.spot : tr.spots.find(x => x.id === id)) || null;
+        auto.textContent = `${t('Auto')}: ${CATS[guessStopCat(val('title'), sp, val('note'))].label}`; };
+      ['input', 'change', 'click'].forEach(ev => root.addEventListener(ev, () => setTimeout(upd, 0))); upd();
+    },
     onSubmit: f => {
       const title = f.get('title').trim(); if (!title) return sheetError('A name is required.');
       if (pending.spot && f.get('spotId') === pending.spot.id) tr.spots.push(pending.spot); // a place created in the picker is only kept when the stop is saved
       Object.assign(it, { time: f.get('time').trim(), title, note: f.get('note').trim(), spotId: f.get('spotId') });
+      if (CATS[f.get('cat')]) it.cat = f.get('cat'); else delete it.cat;   // empty = Auto: guessed again whenever it is shown or exported
       const target = tr.days.find(x => x.id === f.get('dayId')) || d;
       if (!itemId) { it.id = uid('i'); target.items.push(it); }
       else if (target !== d) { d.items = d.items.filter(x => x !== it); target.items.push(it); }
