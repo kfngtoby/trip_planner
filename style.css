@@ -251,9 +251,6 @@ label .row{color:var(--ink)}
 #rc-status{min-height:18px}
 #rc-bar{height:4px;border-radius:2px;background:var(--line);overflow:hidden;display:none}
 #rc-bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
-.rc-chips{display:flex;flex-wrap:wrap;gap:6px}
-.rc-chips button{min-height:38px;border-radius:999px;font-variant-numeric:tabular-nums}
-.rc-chips button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#fff}
 .scan-row{display:grid;grid-template-columns:1fr auto;gap:8px}
 .scan-row select{min-height:44px;max-width:44vw}
 .fx-row{display:grid;gap:6px;margin:-2px 0 10px}
@@ -651,3 +648,44 @@ dialog#sheet{padding-bottom:var(--safe-b)}
 .cat-act.find-nearby:active{transform:scale(.97)}
 .week-tabs button[data-week=all]{flex:0 0 auto}
 .week-tabs .week-next{flex:0 0 auto;min-width:48px;padding:4px 14px;font-size:22px;font-weight:700;background:var(--soft)}
+
+/* day header: edit / delete icons sit beside the toggle */
+.day-bar{display:flex;align-items:center}
+.day-bar .day-head{flex:1;min-width:0}
+.day-icons{display:flex;gap:4px;padding-right:8px;flex:none}
+.icon-btn{display:flex;align-items:center;justify-content:center;min-width:40px;min-height:40px;padding:0;border-radius:10px;border:1px solid var(--line);background:none;color:var(--muted)}
+.icon-btn.danger{color:var(--neg);border-color:color-mix(in srgb,var(--neg) 35%,var(--line))}
+/* time column is its own cell; only the details move when dragging */
+.stop-time{border-right:2px solid var(--soft);padding-right:8px}
+.stop.dragging{box-shadow:none}
+.stop.dragging .stop-main,.stop.dragging .reorder{position:relative;z-index:5;background:var(--card);box-shadow:0 8px 24px #0003;border-radius:8px}
+
+/* v41: all weeks on top (no arrow), All-days slider with week arrows */
+.week-bar>*{min-width:0}
+.week-tabs button[data-week],.week-tabs button[data-week=all]{flex:1 1 0;min-width:96px;padding:4px 8px}
+.slider-track{overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:#8f99a3 var(--soft)}
+.slider-track::-webkit-scrollbar{height:6px}
+.slider-track::-webkit-scrollbar-thumb{background:#8f99a3;border-radius:999px}
+.slider-inner{min-width:100%}
+.day-slider.is-scroll .slider-inner{width:calc((var(--n) + 1) * 46px)}
+.tick-sep{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:44px;font-size:20px;font-weight:700;line-height:1;color:var(--accent);border-left:1px dashed var(--line);border-right:1px dashed var(--line);user-select:none;-webkit-user-select:none}
+.tick-sep small{font-size:10px;font-weight:600;color:var(--muted);margin-top:2px}
+
+/* v41: receipt picture with tappable amounts */
+.rc-view{display:grid;gap:6px}
+.rc-view[hidden]{display:none}
+.rc-zoom{max-height:52vh;overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:var(--r-md);background:var(--soft);
+  touch-action:pan-x pan-y pinch-zoom;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;cursor:crosshair}
+.rc-stage{position:relative;width:100%}
+.rc-view.zoomed .rc-stage{width:250%}
+.rc-stage img{display:block;width:100%;height:auto;pointer-events:none;-webkit-user-drag:none}
+.rc-marks{position:absolute;inset:0}
+.rc-mark{position:absolute;min-height:0;min-width:0;padding:0;border:1.5px solid color-mix(in srgb,var(--accent) 55%,transparent);border-radius:4px;background:color-mix(in srgb,var(--accent) 8%,transparent);pointer-events:none}
+.rc-mark.on{border:2.5px solid var(--accent);background:color-mix(in srgb,var(--accent) 22%,transparent);box-shadow:0 0 0 3px #fff9}
+.rc-mark:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+.rc-tap{position:absolute;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;border:2px solid #fff;background:var(--ink);box-shadow:0 0 0 1px #0006;pointer-events:none}
+.rc-tools{display:flex;align-items:center;gap:8px}
+.rc-picked{flex:1;margin:0;min-width:0;display:grid;font-variant-numeric:tabular-nums}
+.rc-picked small{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rc-zoom-btn{min-height:44px;flex:none}
+.rc-zoom-btn[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#fff}

@@ -150,3 +150,7 @@ Object.assign(ZH,{'Days CSV':'行程 CSV','Import CSV':'匯入 CSV','Export CSV'
 Object.assign(ZH,{'Find Nearby':'搜尋附近'});
 
 Object.assign(ZH,{'Choose CSV file':'選擇 CSV 檔案','Download sample CSV':'下載範例 CSV','Preview':'預覽','Preview rows':'預覽列表','Import':'匯入','Choose another file':'選擇其他檔案','New':'新增','Already there':'已存在','New day':'新日子','Error':'錯誤','new stops':'個新行程','already there':'個已存在','rows with errors':'列有錯誤','more rows':'列未顯示','Exported':'已匯出','days':'天','stops':'個行程','Nothing to export yet.':'暫時沒有可匯出的內容。','The file is not UTF-8; it was read as Big5. Check that the text looks right.':'檔案不是 UTF-8，已以 Big5 讀取，請確認文字是否正確。','Export and import use the same columns, so an exported file can be edited and imported again. Importing only adds; stops already in the trip are skipped. You see a preview before anything is saved.':'匯出與匯入使用相同欄位，匯出的檔案可修改後再匯入。匯入只會新增，已存在的行程會略過；儲存前會先顯示預覽。'});
+
+Object.assign(ZH,{'Export Excel':'匯出 Excel','Building Excel…':'正在建立 Excel…','Could not load the Excel library. Connect once, then try again.':'無法載入 Excel 元件，請連線後再試一次。'});
+Object.assign(ZH,{'All':'全部','Whole trip':'整個行程','Whole week':'全週','Day of the trip':'行程中的哪一天','Tap the receipt where the total is':'在收據上點選總額位置','Receipt total':'收據總額','Found on the receipt':'在收據上找到','Tap the total on the receipt to change it':'如不正確，請在收據上點選總額','No total found. Tap the total on the receipt.':'找不到總額，請在收據上點選總額。'});
+Object.assign(ZH,{'Receipt photo':'收據相片','Zoom':'放大','Picked by you':'由你選擇','No amount there. Tap the number itself, or zoom in.':'該處沒有金額，請點選數字本身，或先放大。'});

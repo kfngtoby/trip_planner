@@ -125,15 +125,13 @@ function renderMapTab() {
   $('#place-search').oninput = e => { placeQuery = e.target.value; refreshPlaces(); };
   renderWeekBar();
   $('#week-bar').onclick = e => {
-    const b = e.target.closest('[data-week],[data-pos],[data-next]'); if (!b) return;
-    if (b.dataset.next) { const n = weekCount(tr), cur = activeWeek(tr); mapDay = 'w' + (cur < 0 ? Math.min(lastWeek, n - 1) : (cur + 1) % n); }
-    else if (b.dataset.week) mapDay = b.dataset.week;
-    else { const w = activeWeek(tr), pos = +b.dataset.pos; mapDay = pos ? weekDays(tr, w)[pos - 1].id : 'w' + w; }
-    reco.showAll = false; renderWeekBar(); refreshPlaces(true);
+    const b = e.target.closest('[data-week],[data-pos]'); if (!b) return;
+    if (b.dataset.week) { if (mapDay === b.dataset.week) return; mapDay = b.dataset.week; reco.showAll = false; renderWeekBar(); refreshPlaces(true); return; }
+    mapDay = sliderDayAt(tr, +b.dataset.pos); reco.showAll = false; updateSliderMarks(); refreshPlaces(true);
   };
   $('#week-bar').oninput = e => {
     if (e.target.id !== 'day-range') return;
-    const w = activeWeek(tr), pos = +e.target.value; mapDay = pos ? weekDays(tr, w)[pos - 1].id : 'w' + w;
+    const pos = snapPos(tr, +e.target.value); mapDay = sliderDayAt(tr, pos);
     updateSliderMarks(); refreshPlaces(false);
   };
   $('#week-bar').onchange = e => { if (e.target.id === 'day-range') fitMap(); };
@@ -202,41 +200,91 @@ function renderMapTab() {
   if (pendingFocus) { const id = pendingFocus; pendingFocus = null; setTimeout(() => openSpot(id), 50); }
 }
 
+/* Week bar: [All days] [Week 1] [Week 2] … on top, then a day slider for the selected scope.
+   The slider's "scope" is 'all' (every trip day, weeks separated by an arrow column) or a week number.
+   Slider columns: 0 = whole scope, then days; in the All-days scope an arrow column sits between weeks. */
+let sliderScope = 'all';
+function sliderCols(tr) {
+  if (sliderScope === 'all') {
+    const cols = [{ kind: 'all' }];
+    tr.days.forEach((d, i) => { if (i && i % 7 === 0) cols.push({ kind: 'sep', week: i / 7 }); cols.push({ kind: 'day', d, i }); });
+    return cols;
+  }
+  const w = sliderScope;
+  return [{ kind: 'all' }, ...weekDays(tr, w).map((d, k) => ({ kind: 'day', d, i: w * 7 + k }))];
+}
+// an arrow column cannot be selected: snap to the nearest day (ties go forward)
+function snapPos(tr, pos) {
+  const cols = sliderCols(tr);
+  if (cols[pos]?.kind !== 'sep') return pos;
+  return cols[pos + 1] ? pos + 1 : pos - 1;
+}
+function sliderDayAt(tr, pos) {
+  const c = sliderCols(tr)[pos];
+  if (!c || c.kind === 'all') return sliderScope === 'all' ? 'all' : 'w' + sliderScope;
+  return c.d.id;
+}
+function sliderPos(tr) {
+  return Math.max(0, sliderCols(tr).findIndex(c => (c.kind === 'all' && (mapDay === 'all' || /^w\d+$/.test(mapDay))) || (c.kind === 'day' && c.d.id === mapDay)));
+}
 function renderWeekBar() {
   const tr = trip(), el = $('#week-bar'); if (!el) return;
-  const n = weekCount(tr), w = activeWeek(tr), today = todayIso(), zh = typeof language !== 'undefined' && language === 'zh';
+  const n = weekCount(tr), today = todayIso(), zh = typeof language !== 'undefined' && language === 'zh';
   const range = days => {
     if (!days.length) return '';
     const a = days[0].date, z = days[days.length - 1].date;
     if (zh) return `${fmtDate(a, { day: 'numeric', month: 'numeric' })}–${fmtDate(z, { day: 'numeric', month: 'numeric' })}`;
     return a.slice(0, 7) === z.slice(0, 7) ? `${+a.slice(8)}–${fmtDate(z, { day: 'numeric', month: 'short' })}` : `${fmtDate(a, { day: 'numeric', month: 'short' })}–${fmtDate(z, { day: 'numeric', month: 'short' })}`;
   };
+  // which scope the slider shows: a week tab keeps its own week; a single day keeps the scope it was picked from
+  if (mapDay === 'all' || mapDay === 'none') sliderScope = 'all';
+  else if (/^w\d+$/.test(mapDay)) sliderScope = +mapDay.slice(1);
+  else if (sliderScope !== 'all' && weekOfDay(tr, mapDay) !== sliderScope) sliderScope = weekOfDay(tr, mapDay);
+  if (sliderScope !== 'all' && sliderScope >= n) sliderScope = 'all';
+  const w = sliderScope === 'all' ? -1 : sliderScope;
   if (w >= 0) lastWeek = w;
-  const cw = Math.min(lastWeek, n - 1), cds = weekDays(tr, cw), cToday = cds.some(d => d.date === today);
-  const tabs = `<button type="button" data-week="all" aria-pressed="${mapDay === 'all'}">${t('All days')}</button>
-    <button type="button" data-week="w${cw}" aria-pressed="${w === cw}"><b>${zh ? `第 ${cw + 1} 週` : `Week ${cw + 1}`}</b><small>${esc(range(cds))}</small>${cToday ? '<i class="today-dot" aria-label="Today"></i>' : ''}</button>
-    ${n > 1 ? `<button type="button" class="week-next" data-next="1" aria-label="${zh ? '下一週' : 'Next week'}">→</button>` : ''}`;
+  const weekTabs = Array.from({ length: n }, (_, k) => {
+    const ds = weekDays(tr, k), hasToday = ds.some(d => d.date === today);
+    return `<button type="button" data-week="w${k}" aria-pressed="${sliderScope === k}"><b>${zh ? `第 ${k + 1} 週` : `Week ${k + 1}`}</b><small>${esc(range(ds))}</small>${hasToday ? '<i class="today-dot" aria-label="Today"></i>' : ''}</button>`;
+  }).join('');
+  const tabs = `<button type="button" data-week="all" aria-pressed="${sliderScope === 'all'}"><b>${t('All days')}</b><small>${esc(range(tr.days))}</small></button>${weekTabs}`;
   let slider = '';
-  if (w >= 0) {
-    const ds = weekDays(tr, w), pos = /^w\d+$/.test(mapDay) ? 0 : ds.findIndex(d => d.id === mapDay) + 1;
-    slider = `<div class="day-slider" style="--n:${ds.length}">
-      <input type="range" id="day-range" min="0" max="${ds.length}" step="1" value="${pos}" aria-label="${t('Day in this week')}">
-      <div class="ticks">${[`<button type="button" data-pos="0" aria-pressed="${pos === 0}"><b>${t('Week')}</b><small>${t('all')}</small></button>`,
-        ...ds.map((d, k) => { const i = w * 7 + k; return `<button type="button" data-pos="${k + 1}" aria-pressed="${pos === k + 1}" style="--c:${DAY_COLORS[i % DAY_COLORS.length]}"><b>${i + 1}</b><small>${esc(fmtDate(d.date, { weekday: 'short' }))}</small>${d.date === today ? '<i class="today-dot" aria-label="Today"></i>' : ''}</button>`; })].join('')}</div>
+  if (tr.days.length) {
+    const cols = sliderCols(tr), pos = sliderPos(tr);
+    const cells = cols.map((c, k) => {
+      if (c.kind === 'all') return `<button type="button" data-pos="0" aria-pressed="${pos === 0}"><b>${sliderScope === 'all' ? t('All') : t('Week')}</b><small>${sliderScope === 'all' ? (zh ? `${tr.days.length} 天` : `${tr.days.length} days`) : t('all')}</small></button>`;
+      if (c.kind === 'sep') return `<span class="tick-sep" aria-hidden="true" title="${zh ? `第 ${c.week + 1} 週` : `Week ${c.week + 1}`}">→<small>${zh ? `${c.week + 1}週` : `W${c.week + 1}`}</small></span>`;
+      return `<button type="button" data-pos="${k}" aria-pressed="${pos === k}" style="--c:${DAY_COLORS[c.i % DAY_COLORS.length]}"><b>${c.i + 1}</b><small>${esc(fmtDate(c.d.date, { weekday: 'short' }))}</small>${c.d.date === today ? '<i class="today-dot" aria-label="Today"></i>' : ''}</button>`;
+    }).join('');
+    const scroll = cols.length > 8;
+    slider = `<div class="day-slider${scroll ? ' is-scroll' : ''}" style="--n:${cols.length - 1}">
+      <div class="slider-track" id="slider-track"><div class="slider-inner">
+      <input type="range" id="day-range" min="0" max="${cols.length - 1}" step="1" value="${pos}" aria-label="${sliderScope === 'all' ? t('Day of the trip') : t('Day in this week')}">
+      <div class="ticks">${cells}</div></div></div>
       <p class="slider-label" id="slider-label"></p></div>`;
   }
   el.innerHTML = `<div class="week-tabs">${tabs}</div>${slider}`;
-  updateSliderMarks();
+  updateSliderMarks(true);
 }
-function updateSliderMarks() {
-  const tr = trip(), w = activeWeek(tr), lab = $('#slider-label'); if (w < 0 || !lab) return;
-  const ds = weekDays(tr, w), pos = /^w\d+$/.test(mapDay) ? 0 : ds.findIndex(d => d.id === mapDay) + 1;
+function updateSliderMarks(center = false) {
+  const tr = trip(), lab = $('#slider-label'); if (!lab) return;
+  const cols = sliderCols(tr), pos = sliderPos(tr);
   $$('#week-bar [data-pos]').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.pos === pos)));
   const r = $('#day-range'); if (r && +r.value !== pos) r.value = pos;
-  r?.style.setProperty('--c', pos ? DAY_COLORS[(w * 7 + pos - 1) % DAY_COLORS.length] : 'var(--accent)');
-  if (!pos) { lab.innerHTML = `<span>${t('Whole week')}</span> · ${ds.length} <span>${t('Days')}</span>`; return; }
-  const d = ds[pos - 1];
-  lab.innerHTML = `<b>Day ${w * 7 + pos}</b> · <span>${esc(fmtDate(d.date))}</span>${L(d, 'title') || L(d, 'place') ? ` · <span class="user-text">${esc(L(d, 'place') || L(d, 'title'))}</span>` : ''}`;
+  const c = cols[pos];
+  r?.style.setProperty('--c', c?.kind === 'day' ? DAY_COLORS[c.i % DAY_COLORS.length] : 'var(--accent)');
+  // keep the chosen day visible in a long, scrolling slider
+  const track = $('#slider-track'), cell = $(`#week-bar [data-pos="${pos}"]`);
+  if (track && cell && track.scrollWidth > track.clientWidth) {
+    const left = cell.offsetLeft - (track.clientWidth - cell.offsetWidth) / 2;
+    if (center || cell.offsetLeft < track.scrollLeft || cell.offsetLeft + cell.offsetWidth > track.scrollLeft + track.clientWidth) track.scrollTo({ left, behavior: center ? 'auto' : 'smooth' });
+  }
+  if (!c || c.kind !== 'day') {
+    const ds = sliderScope === 'all' ? tr.days : weekDays(tr, sliderScope);
+    lab.innerHTML = `<span>${sliderScope === 'all' ? t('Whole trip') : t('Whole week')}</span> · ${ds.length} <span>${t('Days')}</span>`; return;
+  }
+  const d = c.d;
+  lab.innerHTML = `<b>Day ${c.i + 1}</b> · <span>${esc(fmtDate(d.date))}</span>${L(d, 'title') || L(d, 'place') ? ` · <span class="user-text">${esc(L(d, 'place') || L(d, 'title'))}</span>` : ''}`;
 }
 
 function refreshPlaces(refit = false) {
