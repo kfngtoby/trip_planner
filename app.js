@@ -235,7 +235,6 @@ function renderDaysTab() {
       </span>
       <span class="toolbar-group">${todayDay(tr) ? `<button id="jump-today" class="text-btn">${t('Today')}</button>` : ''}<button id="csv-import" class="text-btn">${t('Import CSV')}</button><button id="csv-export" class="text-btn" ${tr.days.length ? '' : 'disabled'}>${t('Export CSV')}</button><button id="xlsx-export" class="text-btn" ${tr.days.length ? '' : 'disabled'}>${t('Export Excel')}</button><button id="add-day" class="text-btn">+ ${t('Add day')}</button></span>
     </div>
-    ${tr.days.some(d => d.items.length) ? `<p class="swipe-hint">${t('Tap a stop to edit · swipe right to remove')}</p>` : ''}
     ${tr.days.length ? tr.days.map((d, i) => dayCard(tr, d, i, open.has(d.id))).join('') : `<p class="empty">No stops yet</p>`}`;
   $('#expand-all').onclick = () => { tr.days.forEach(d => open.add(d.id)); renderDaysTab(); };
   $('#collapse-all').onclick = () => { open.clear(); renderDaysTab(); $('#view').scrollTo({ top: 0 }); };
@@ -505,17 +504,23 @@ function wireDrag() {
     e.preventDefault(); const [a, b] = h.dataset.drag.split('|'); moveItem(a, b, e.key === 'ArrowUp' ? -1 : 1);
     document.querySelector(`[data-drag="${h.dataset.drag}"]`)?.focus();
   });
+  // iOS: while a stop is held, the page must not scroll or rubber-band under the finger
+  document.addEventListener('touchmove', e => { if (g) e.preventDefault(); }, { passive: false });
+  const haptic = () => { try { navigator.vibrate?.(8); } catch {} };
   const update = () => {
     const dy = (g.y - g.y0) + ((g.sc ? g.sc.scrollTop : 0) - g.s0);
-    mv(g.li, `translateY(${dy}px)`);
+    mv(g.li, `translateY(${dy}px) scale(1.03)`);
     const c = g.rects[g.from].top + g.rects[g.from].h / 2 + dy; let to = g.from;
     g.rects.forEach((r, i) => { const m = r.top + r.h / 2; if (i < g.from && c < m) to = Math.min(to, i); if (i > g.from && c > m) to = Math.max(to, i); });
+    if (to !== g.to) haptic();
     g.to = to;
     g.lis.forEach((x, i) => { if (x !== g.li) mv(x, to > g.from && i > g.from && i <= to ? `translateY(${-g.shift}px)` : to < g.from && i >= to && i < g.from ? `translateY(${g.shift}px)` : ''); });
   };
   const tick = () => {
     if (!g) return;
-    if (g.sc) { const r = g.sc.getBoundingClientRect(); if (g.y < r.top + 70) g.sc.scrollTop -= 12; else if (g.y > r.bottom - 70) g.sc.scrollTop += 12; }
+    if (g.sc) { const r = g.sc.getBoundingClientRect(), edge = 80;                 // auto-scroll, faster nearer the edge
+      if (g.y < r.top + edge) g.sc.scrollTop -= Math.ceil(16 * (1 - Math.max(0, g.y - r.top) / edge));
+      else if (g.y > r.bottom - edge) g.sc.scrollTop += Math.ceil(16 * (1 - Math.max(0, r.bottom - g.y) / edge)); }
     update(); g.raf = requestAnimationFrame(tick);
   };
   document.body.addEventListener('pointerdown', e => {
@@ -526,18 +531,36 @@ function wireDrag() {
     const gap = lis.length < 2 ? 0 : from < lis.length - 1 ? rects[from + 1].top - rects[from].top - rects[from].h : rects[from].top - rects[from - 1].top - rects[from - 1].h;
     g = { id: e.pointerId, h, li, ol, lis, rects, from, to: from, y0: e.clientY, y: e.clientY, s0, sc, shift: rects[from].h + gap, raf: 0 };
     try { h.setPointerCapture(e.pointerId); } catch {}
-    li.classList.add('dragging'); ol.classList.add('drag-on'); g.raf = requestAnimationFrame(tick);
+    li.classList.add('dragging'); ol.classList.add('drag-on'); haptic(); g.raf = requestAnimationFrame(tick);
   });
   document.body.addEventListener('pointermove', e => { if (g && e.pointerId === g.id) g.y = e.clientY; });
   const end = e => {
     if (!g || e.pointerId !== g.id) return;
     const { h, li, ol, lis, from, to, sc } = g; cancelAnimationFrame(g.raf); g = null; lastSwipe = Date.now();
+    const cancel = e.type === 'pointercancel' || to === from;
+    if (cancel) {                                                                     // glide back into place
+      li.classList.add('settling'); mv(li, '');
+      lis.forEach(x => { if (x !== li) mv(x, ''); });
+      setTimeout(() => { li.classList.remove('dragging', 'settling'); ol.classList.remove('drag-on'); }, 220);
+      return;
+    }
+    const grab = li.querySelector('.stop-main')?.getBoundingClientRect().top;          // where the stop is on screen now
     li.classList.remove('dragging'); ol.classList.remove('drag-on'); lis.forEach(x => mv(x, ''));
-    if (e.type === 'pointercancel' || to === from) return;
-    const [dId] = h.dataset.drag.split('|'), d = trip().days.find(x => x.id === dId); if (!d) return;
+    const [dId, iId] = h.dataset.drag.split('|'), d = trip().days.find(x => x.id === dId); if (!d) return;
     const top = sc ? sc.scrollTop : 0; reorderKeepingTimes(d.items, from, to);
     saveDb(); renderDaysTab(); if (sc) sc.scrollTop = top;
-    document.querySelector(`[data-drag="${h.dataset.drag}"]`)?.focus({ preventScroll: true });
+    // FLIP: start the moved stop where the finger left it and let it settle into its new slot
+    const nh = document.querySelector(`[data-drag="${h.dataset.drag}"]`), nli = nh?.closest('li.stop');
+    if (nli && grab != null) {
+      const parts = [...nli.querySelectorAll('.stop-main,.reorder')], now = parts[0]?.getBoundingClientRect().top;
+      if (now != null) {
+        parts.forEach(p => { p.style.transition = 'none'; p.style.transform = `translateY(${grab - now}px) scale(1.03)`; });
+        nli.classList.add('dropped'); nli.getBoundingClientRect();
+        requestAnimationFrame(() => { parts.forEach(p => { p.style.transition = ''; p.style.transform = ''; }); });
+        setTimeout(() => { nli.classList.remove('dropped'); parts.forEach(p => { p.style.transition = ''; }); }, 600);
+      }
+    }
+    haptic(); nh?.focus({ preventScroll: true });
   };
   document.body.addEventListener('pointerup', end);
   document.body.addEventListener('pointercancel', end);

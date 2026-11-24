@@ -1,6 +1,6 @@
 // Caches the app so it opens without signal (e.g. on a train in Japan).
-// Deploy: bump V here AND the ?v= ids in index.html (same value), e.g. with: sed -i 's/41-receipt-tap/NEW/g' sw.js index.html
-const V = '41-receipt-tap';
+// Deploy: bump V here AND the ?v= ids in index.html (same value), e.g. with: sed -i 's/42-ios-polish/NEW/g' sw.js index.html
+const V = '42-ios-polish';
 const VERSION = 'trips-v' + V;
 const q = f => f + '?v=' + V;
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', q('style.css'),

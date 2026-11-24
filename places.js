@@ -394,6 +394,19 @@ function showSpotCard(id) {
   $$('.pin.active').forEach(p => p.classList.remove('active'));
   markers.get(id)?.getElement()?.classList.add('active');
   positionSpotCard();
+  requestAnimationFrame(keepCardInView);
+}
+// The description box must be fully visible: pan the map until it fits inside the map, then scroll the page so the
+// map part holding it is on screen (clear of the top bar and the bottom tabs).
+function keepCardInView() {
+  const card = $('#spot-card'); if (!card || card.hidden || !lmap) return;
+  const size = lmap.getSize(), m = 10, top = parseFloat(card.style.top) || 0, left = parseFloat(card.style.left) || 0, h = card.offsetHeight, w = card.offsetWidth;
+  let dy = 0, dx = 0;
+  if (h > size.y - 2 * m || top < m) dy = top - m; else if (top + h > size.y - m) dy = top + h - (size.y - m);
+  if (left < m) dx = left - m; else if (left + w > size.x - m) dx = left + w - (size.x - m);
+  const reveal = () => { const c = $('#spot-card'); if (c && !c.hidden) c.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }); };
+  if (Math.abs(dy) > 1 || Math.abs(dx) > 1) { lmap.once('moveend', () => { positionSpotCard(); reveal(); }); lmap.panBy([dx, dy], { animate: true, duration: 0.25 }); }
+  else reveal();
 }
 function hideSpotCard() {
   activeSpotId = null;

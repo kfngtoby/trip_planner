@@ -289,10 +289,30 @@ function toast(msg) {
   const el = $('#toast'); el.textContent = typeof t === 'function' ? t(msg) : msg; el.hidden = false;
   clearTimeout(toast.timer); toast.timer = setTimeout(() => el.hidden = true, 3500);
 }
-function download(name, text, type = 'application/json') {
-  const url = URL.createObjectURL(new Blob([text], { type }));
-  const a = document.createElement('a'); a.href = url; a.download = name; a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+function download(name, text, type = 'application/json') { saveFile(name, text instanceof Blob ? text : new Blob([text], { type })); }
+// iPhone / iPad (above all the Home Screen app) often saves a downloaded blob as "Unknown" with no file type.
+// There the share sheet is used instead (Save to Files, AirDrop, Mail…), which keeps the name and the format.
+const isIOS = () => /iP(hone|ad|od)/.test(navigator.platform) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) || /iP(hone|ad|od)/.test(navigator.userAgent);
+async function saveFile(name, blob) {
+  const type = blob.type.split(';')[0] || 'application/octet-stream';
+  if (isIOS() && typeof File === 'function' && navigator.canShare) {
+    const file = new File([blob], name, { type });
+    if (navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: name }); return; }
+      catch (e) {
+        if (e?.name === 'AbortError') return;                                   // the person closed the share sheet
+        if (e?.name === 'NotAllowedError') return saveFileSheet(name, file);  // too long after the tap: ask for one more tap
+      }
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = name; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+function saveFileSheet(name, file) {
+  openSheet({ title: t('File ready'), submit: null,
+    body: `<p class="user-text"><b>${esc(name)}</b></p><button type="button" class="primary wide" id="save-file">${t('Save or share file')}</button>`,
+    onOpen: root => { root.querySelector('#save-file').onclick = async () => { try { await navigator.share({ files: [file], title: name }); closeSheet(); } catch (e) { if (e?.name !== 'AbortError') toast(t('Could not open the share sheet.')); } }; } });
 }
 const slug = s => (s || 'trip').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-').replace(/^-|-$/g, '') || 'trip';
 

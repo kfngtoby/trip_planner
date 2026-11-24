@@ -53,12 +53,18 @@ const csvText = rows => '\ufeff' + [CSV_COLS, ...rows].map(r => r.map(csvField).
 /* ---------- trip -> rows ---------- */
 function csvRowsFromTrip(tr) {
   const rows = [], g = csvGuard;
+  // Tidy layout: one block per day, an empty line between days, day title / area only on the day's first row,
+  // times as 24h HH:MM, coordinates to 6 decimals. Import ignores empty lines and repeats, so the file round-trips.
+  const hhmm = v => { const x = String(v || '').trim(), m = x.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i); if (!m) return x;
+    let h = +m[1]; const mm = m[2] || '00', ap = m[3]?.toLowerCase(); if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0; return h < 24 && +mm < 60 ? `${String(h).padStart(2, '0')}:${mm}` : x; };
+  const deg = v => Number.isFinite(+v) && v !== '' ? (+v).toFixed(6) : '';
   tr.days.forEach((d, i) => {
-    const dm = [g(d.title), g(d.place)];
+    const dm = [g(d.title), g(d.place)], none = ['', ''];
+    if (i) rows.push(CSV_COLS.map(() => ''));
     if (!d.items.length) rows.push([d.date, '', '', i + 1, '', '', '', '', '', ...dm, '', '']);
-    d.items.forEach(it => {
+    d.items.forEach((it, k) => {
       const s = it.spotId && tr.spots.find(x => x.id === it.spotId), pin = s && hasCoords(s);
-      rows.push([d.date, g(it.time), s ? s.cat : '', i + 1, g(it.title), s ? g(s.name) : '', g(it.note), pin ? s.lat : '', pin ? s.lon : '', ...dm, s ? g(s.hours) : '', s ? g(s.link) : '']);
+      rows.push([d.date, g(hhmm(it.time)), s ? s.cat : '', i + 1, g(it.title), s ? g(s.name) : '', g(it.note), pin ? deg(s.lat) : '', pin ? deg(s.lon) : '', ...(k ? none : dm), s ? g(s.hours) : '', s ? g(s.link) : '']);
     });
   });
   return rows;
@@ -70,6 +76,8 @@ const csvTemplateRows = tr => {
     [d2, '15:00', 'sights', 2, 'Walk around the old town', '', '[Photo spot]', '', '', 'Old town', '', '', ''],
     [addDays(d2, 1), '', '', 3, '', '', '', '', '', 'Free day', '', '', '']];
 };
+// Blank template: the header row and one empty row per trip day with only Date and Day filled in, ready to type into.
+const csvBlankRows = tr => (tr.days.length ? tr.days : [{ date: todayIso() }]).map((d, i) => [d.date, '', '', i + 1, '', '', '', '', '', '', '', '', '']);
 const csvFilename = (tr, kind) => `${slug(tr.name)}-itinerary${kind ? '-' + kind : ''}.csv`;
 
 /* ---------- rows -> trip ---------- */
@@ -201,9 +209,12 @@ function csvImportSheet(tr) {
   const chip = (attr, val, label, extra = '') => `<button type="button" class="tag" ${attr}="${esc(val)}" ${extra}>${esc(label)}</button>`;
   openSheet({
     title: t('Import CSV'), submit: null,
-    body: `<div class="csv-top">
-        <button type="button" class="primary" data-csv="import">${t('Choose CSV file')}</button>
-        <button type="button" data-csv="sample">${t('Download sample CSV')}</button></div>
+    body: `<ol class="csv-steps">
+        <li><b>${t('Download the blank template')}</b><small>${t('Headers and one empty row per trip day. Fill it in with Excel, Numbers or Google Sheets, then save as CSV.')}</small>
+          <button type="button" class="primary" data-csv="blank">${t('Download blank template')}</button></li>
+        <li><b>${t('Import the filled-in file')}</b><small>${t('You see a preview before anything is saved.')}</small>
+          <button type="button" data-csv="import">${t('Choose CSV file')}</button></li></ol>
+      <p class="field-hint"><button type="button" class="text-btn" data-csv="sample">${t('Download sample CSV')}</button> ${t('shows filled-in example rows.')}</p>
       <p class="field-hint">${t('Columns')}: ${CSV_COLS.join(' · ')}. ${t('Export and import use the same columns, so an exported file can be edited and imported again. Importing only adds; stops already in the trip are skipped. You see a preview before anything is saved.')}</p>
       <div id="csv-preview"></div>
       <details class="csv-quick"><summary>${t('Quick entry')}</summary>
@@ -248,6 +259,7 @@ function csvImportSheet(tr) {
             break;
           }
           case 'confirm': try { csvApply(tr, pending); } catch (err) { toast(err.message); } break;
+          case 'blank': download(csvFilename(tr, 'template'), csvText(csvBlankRows(tr)), 'text/csv;charset=utf-8'); break;
           case 'sample': download(csvFilename(tr, 'sample'), csvText(csvTemplateRows(tr)), 'text/csv;charset=utf-8'); break;
           case 'add': {
             const title = g('q-title').value.trim(), place = g('q-place').value.trim(); if (!title && !place) return toast('Enter a title or a map place.');

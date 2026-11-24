@@ -17,11 +17,11 @@ Data is stored on the device (`localStorage`, key `trip-companion-v3`). A differ
 **My trips** → tap a trip (tap the name to rename) → **Overview** (map) · **Days** · **Expenses**.
 
 - **Overview**: category chips filter the map and the grouped details under Search. Under the map: All days, Week 1, Week 2 … side by side (no arrow), then a day slider for the chosen tab. In All days the slider covers the whole trip and scrolls sideways, with an arrow column (→ W2) marking where each new week starts. Map is **Light** (muted OpenStreetMap) or **Normal** (full colour); the choice is remembered. Numbered route mode: tap pins in order, pick Drive / Walk / Bike, and open the route in Google Maps (max 11 points).
-- **Days**: expand a day to edit stops. The toolbar has separate **Import CSV** and **Export CSV** buttons (see below). Tap a stop to edit, swipe right to remove (Undo is offered). Delete day is on each day card. There is no Find nearby on the Days tab; use Find Nearby on the Overview.
+- **Days**: expand a day to edit stops. The toolbar has separate **Import CSV** and **Export CSV** buttons (see below). Tap a stop to edit, swipe right to remove (Undo is offered). Hold the ⠿ handle to drag a stop: it lifts, the others slide aside, and it settles into place on release. Delete day is on each day card. There is no Find nearby on the Days tab; use Find Nearby on the Overview.
 - **Expenses**: split costs, members, settle up, CSV export. Each expense has a bill currency; a live rate is fetched (frankfurter.dev), editable, and cached for offline. The amount is stored in the trip currency with the original amount and rate kept. Receipt scan (photos or PDFs; OCR, 31 languages) detects language and currency, shows the receipt, and picks the total by itself using a dictionary of total / amount-due wording (Chinese, Japanese and English first, then the other languages; fapiao 大写 and 領収書 kanji amounts too). To change it, tap the right number on the picture: tapping the label or anywhere on that row also works, and Zoom enlarges the picture for small print. PDFs with a text layer are read directly, without OCR.
 
 ### Days CSV (`csv.js`)
-Two toolbar buttons on the Days tab. **Export CSV** downloads the whole itinerary in one tap. **Import CSV** opens a sheet to choose a file, download a sample file, or use quick entry. Sample, export and import share one layout, so an exported file can be edited and imported again:
+Two toolbar buttons on the Days tab. **Export CSV** downloads the whole itinerary in one tap. **Import CSV** opens a sheet that starts with a blank template (headers plus one empty row per trip day), then the file picker; a filled-in sample and quick entry are also there. Sample, export and import share one layout, so an exported file can be edited and imported again:
 
 | Column | Meaning |
 |---|---|
@@ -40,7 +40,7 @@ Two toolbar buttons on the Days tab. **Export CSV** downloads the whole itinerar
 - Import only adds. A stop with the same day, time, title and place as one already in the trip is skipped, so re-importing an export changes nothing; two identical lines inside one file both come in. New dates create new days. Existing day titles, areas, place hours and links are never overwritten.
 - Bad rows (invalid date, Day outside 1-90) are reported and skipped; unknown categories fall back to `sights` and invalid coordinates add no pin, both with a warning.
 - Files are read as UTF-8; a non-UTF-8 file (e.g. Excel Big5) is read as Big5 with a warning. Comma, semicolon and tab separators are detected.
-- **Export** writes the same columns (UTF-8 with BOM, opens in Excel). A day with no stops becomes a row with only Date, Day, Day title and Area. Text starting with `=`, `+`, `-` or `@` gets a leading `'` so spreadsheets do not run it as a formula; import strips it again.
+- **Export** writes the same columns (UTF-8 with BOM, opens in Excel), one block per day with an empty line between days, times as HH:MM and coordinates to 6 decimals. On iPhone and iPad files are saved through the share sheet (Save to Files), so they keep their name and .csv / .xlsx type. A day with no stops becomes a row with only Date, Day, Day title and Area. Text starting with `=`, `+`, `-` or `@` gets a leading `'` so spreadsheets do not run it as a formula; import strips it again.
 - **Quick entry** (inside the Import sheet) has tap-to-fill chips for time, category and note tags. Press *Add row*, then download the rows or preview and add them to the trip.
 - Not in the CSV: expenses, place photos and other place details. Use *Export trip backup* for a full copy.
 
@@ -53,7 +53,7 @@ Columns: Day · Date · Time · Type · Location · Location link · Coordinates
 - Date is a formula off the Trip Info start date when the trip's days are consecutive, otherwise plain dates.
 - Type comes from the place's category (`XLSX_TYPE_BY_CAT` in `xlsx.js`: base → Hotel, food → Meal, everything else → Activity). Stops with no place, or at a Hotels & transport place, are sorted by words in the title (`XLSX_TYPE_WORDS`: Flight, Train, Transfer, Hotel, Meal, Free time). The dropdown list lives on Trip Info.
 - Coordinates come from the place's pin, or are decoded from a long Google Maps link, and link to OpenStreetMap. Short `maps.app.goo.gl` links cannot be decoded in the browser; give the place a pin instead.
-- ExcelJS is vendored in `vendor/` (MIT), loaded on the first export, and cached by the service worker for offline use.
+- ExcelJS is vendored in `vendor/` (MIT), loaded on the first export, and cached by the service worker for offline use. If that copy can't be loaded, cdnjs and then jsDelivr are tried.
 
 ### Find food (Tabelog search builder)
 Nothing is fetched from Tabelog and no server is needed. **Find food** opens a small form that builds the search for you:

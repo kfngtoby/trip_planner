@@ -163,13 +163,26 @@ function xlsxBuild(ExcelJS, tr, now = new Date()) {
 
 /* ---------- UI ---------- */
 // ExcelJS is ~0.9 MB, so it loads on the first export and is kept in the offline cache (sw.js).
+// Tries the copy shipped with the app first, then two CDNs (a host that skipped the vendor/ folder, a stale cache or a
+// blocked file no longer breaks the export). Each try checks that ExcelJS really arrived.
+const XLSX_SOURCES = [XLSX_LIB, 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js', 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js'];
+let xlsxLoading = null;
 function xlsxLoad() {
-  if (window.ExcelJS) return Promise.resolve();
-  return new Promise((res, rej) => {
-    const s = document.createElement('script'); s.src = XLSX_LIB;
-    s.onload = res; s.onerror = () => rej(Error('Could not load the Excel library. Connect once, then try again.'));
-    document.head.appendChild(s);
-  });
+  if (window.ExcelJS?.Workbook) return Promise.resolve();
+  return xlsxLoading ||= (async () => {
+    for (const src of XLSX_SOURCES) {
+      const ok = await new Promise(res => {
+        const s = document.createElement('script'); s.src = src; s.async = true;
+        const timer = setTimeout(() => { s.remove(); res(false); }, 20000);
+        s.onload = () => { clearTimeout(timer); res(!!window.ExcelJS?.Workbook); };
+        s.onerror = () => { clearTimeout(timer); s.remove(); res(false); };
+        document.head.appendChild(s);
+      });
+      if (ok) return;
+    }
+    xlsxLoading = null;
+    throw Error(navigator.onLine ? 'Could not load the Excel library. Try again in a moment.' : 'Could not load the Excel library. Connect once, then try again.');
+  })();
 }
 async function xlsxExport(tr) {
   if (!tr.days.length) return toast('Nothing to export yet.');
@@ -177,9 +190,7 @@ async function xlsxExport(tr) {
   try {
     await xlsxLoad();
     const wb = xlsxBuild(window.ExcelJS, tr), buf = await wb.xlsx.writeBuffer(), n = tr.days.reduce((a, d) => a + d.items.length, 0);
-    const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
-    const a = document.createElement('a'); a.href = url; a.download = `${slug(tr.name)}-itinerary.xlsx`; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    await saveFile(`${slug(tr.name)}-itinerary.xlsx`, new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
     toast(`${t('Exported')} ${n} ${t('stops')} · ${tr.days.length} ${t('days')}`);
   } catch (e) { toast(e.message || 'Export failed.'); }
 }

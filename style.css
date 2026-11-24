@@ -689,3 +689,34 @@ dialog#sheet{padding-bottom:var(--safe-b)}
 .rc-picked small{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rc-zoom-btn{min-height:44px;flex:none}
 .rc-zoom-btn[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* v42 */
+/* Overview: Find Nearby scrolls with the other chips */
+.cat-act.find-nearby{position:static}
+/* description box: keep clear of the sticky header and bottom tabs when scrolled into view */
+.spot-card{scroll-margin:76px 8px 96px}
+/* Expenses → Split between / Paid by: every member keeps the same size, amounts never push the row around */
+#owed-pills,#paid-pills{display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:6px}
+#owed-pills button,#paid-pills button{width:100%;min-width:0;padding:4px 8px;overflow:hidden}
+#owed-pills button{height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;line-height:1.2}
+#owed-pills button>span,#paid-pills button{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+#owed-pills small{display:block;min-height:1.2em;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums}
+#owed-total,#paid-total{display:block;min-height:1.4em;font-variant-numeric:tabular-nums}
+.amt-row input{font-variant-numeric:tabular-nums}
+/* Days tab: drag to reorder feels native on iPhone */
+.stops.drag-on .stop:not(.dragging) .stop-main,.stops.drag-on .stop:not(.dragging) .reorder{transition:transform .2s cubic-bezier(.2,.8,.2,1)}
+.stop.dragging .stop-main,.stop.dragging .reorder{transition:box-shadow .15s ease;box-shadow:0 12px 28px #0003;will-change:transform}
+.stop.settling .stop-main,.stop.settling .reorder{transition:transform .22s cubic-bezier(.2,.8,.2,1),box-shadow .22s ease;box-shadow:none}
+.stop.dropped .stop-main,.stop.dropped .reorder{transition:transform .26s cubic-bezier(.2,.8,.2,1)}
+.stop.dropped .stop-main{animation:stop-drop .6s ease-out}
+@keyframes stop-drop{0%{background:color-mix(in srgb,var(--accent) 14%,var(--card))}100%{background:var(--card)}}
+.drag-handle{-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;min-height:44px;min-width:44px}
+.drag-handle:active{background:var(--soft);transform:scale(.94)}
+.stop.dragging .drag-handle{background:var(--accent);border-color:var(--accent);color:#fff;cursor:grabbing}
+@media (prefers-reduced-motion:reduce){.stop .stop-main,.stop .reorder{transition:none!important;animation:none!important}}
+.csv-steps{list-style:none;margin:0 0 6px;padding:0;display:grid;gap:10px;counter-reset:st}
+.csv-steps li{counter-increment:st;display:grid;gap:6px;padding:12px 12px 12px 46px;position:relative;border:1px solid var(--line);border-radius:var(--r-md);background:var(--card)}
+.csv-steps li::before{content:counter(st);position:absolute;left:12px;top:12px;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-weight:700;font-size:13px;display:grid;place-items:center}
+.csv-steps small{color:var(--muted);font-size:13px}
+.csv-steps button{justify-self:start}
+.stop.dragging,.stop.settling,.stop.dropped{overflow:visible;z-index:6}
