@@ -377,15 +377,6 @@ label.full{display:block;margin-bottom:10px}
 .stop{align-items:flex-start}
 .toolbar-group{display:inline-flex;gap:4px;align-items:center}
 
-/* Timezone strip (Overview + Days) */
-.tz-strip{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:8px 10px;padding:8px 12px;border:1px solid var(--line,#e4e4e4);border-radius:12px;background:var(--card,#fff);font-size:13px}
-.tz-clock{display:inline-flex;align-items:baseline;gap:6px}
-.tz-clock b{font-size:18px;font-variant-numeric:tabular-nums;letter-spacing:.2px}
-.tz-clock small,.tz-own,.tz-home{color:var(--muted);font-size:11px;font-weight:500}
-.tz-clock.home b{font-size:15px;font-weight:600;color:var(--muted)}
-.tz-diff{padding:2px 8px;border-radius:999px;background:color-mix(in srgb,var(--muted) 14%,transparent);font-weight:600;font-size:12px}
-.tz-phase{margin-left:auto;font-weight:600;font-size:12px;color:var(--muted)}
-.tz-phase.now{color:#2f8a5b}
 .stop-time small{display:block;line-height:1.25}
 .today-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#2f8a5b;margin-left:4px;vertical-align:middle}
 
@@ -482,7 +473,6 @@ label.full{display:block;margin-bottom:10px}
 .account{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin:0 0 14px;padding:10px 12px;border:1px solid var(--line,#dfe3e0);border-radius:12px;font-size:14px}
 .account span{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .account small{opacity:.65}
-.ai-out{white-space:pre-wrap;line-height:1.5;margin-top:8px}
 label.check{display:flex;gap:8px;align-items:flex-start}
 
 
@@ -542,35 +532,6 @@ label.check{display:flex;gap:8px;align-items:flex-start}
 .day-actions .danger{border-color:color-mix(in srgb,var(--neg) 35%,var(--line))}
 
 /* ---- AI itinerary panel (Days tab) ---- */
-.ai-panel{margin:8px 12px 12px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--card);overflow:hidden}
-.ai-panel>summary{display:flex;align-items:center;gap:8px;min-height:52px;padding:0 14px;cursor:pointer;list-style:none;font-size:15px}
-.ai-panel>summary::-webkit-details-marker{display:none}
-.ai-panel>summary::after{content:'';margin-left:auto;width:9px;height:9px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);transition:transform .2s}
-.ai-panel[open]>summary::after{transform:rotate(-135deg)}
-.ai-panel>summary small{color:var(--muted);font-size:12px;padding:2px 8px;border-radius:999px;background:var(--soft)}
-.ai-body{display:grid;gap:10px;padding:0 12px 14px}
-.ai-weeks{display:grid;gap:6px}
-.ai-week{border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden}
-.ai-week.open{border-color:var(--accent)}
-.ai-week-head{width:100%;justify-content:space-between;min-height:50px;padding:6px 12px;border:0;border-radius:0;background:none;text-align:left}
-.ai-wk{display:grid;line-height:1.25}
-.ai-wk small{color:var(--muted);font-size:12px;font-weight:400}
-.ai-week.open .chev{transform:rotate(-135deg)}
-.ai-week-body{padding:0 8px 8px}
-.ai-week-body .day-slider{border:0;background:none}
-.ai-sel{font-size:13px;color:var(--ink);font-weight:600;padding:0 2px}
-.ai-actions .primary{flex:1}
-.ai-day{margin-top:4px;padding:8px 10px;border-left:5px solid var(--c);border-radius:var(--r-sm);background:color-mix(in srgb,var(--c) 6%,var(--card))}
-.ai-day h4{margin:0 0 4px;font:700 14px var(--display);color:var(--c)}
-.ai-stops{list-style:none;margin:0;padding:0}
-.ai-stop{display:grid;grid-template-columns:auto 44px 1fr;gap:8px;align-items:flex-start;padding:7px 0;border-top:1px solid var(--soft);color:var(--ink);font-size:14px;cursor:pointer}
-.ai-day .ai-stops li:first-child .ai-stop{border-top:0}
-.ai-stop>input{width:20px;height:20px;margin-top:2px;accent-color:var(--accent)}
-.ai-st-time{font-size:12.5px;font-weight:600;color:var(--c);padding-top:2px;font-variant-numeric:tabular-nums}
-.ai-st-main{display:grid;min-width:0;gap:1px}
-.ai-st-main strong{font-weight:600;overflow-wrap:anywhere}
-.ai-st-main small{color:var(--muted);font-size:12px;font-weight:400;overflow-wrap:anywhere}
-.ai-pin{margin-top:4px;font-size:13px;color:var(--ink)}
 
 .base-minimal{filter:saturate(.38) contrast(.83) brightness(1.12)}
 #map[data-base=minimal]{background:#edf0eb}
@@ -625,3 +586,50 @@ label.check{display:flex;gap:8px;align-items:flex-start}
 .pp-txt strong{font-weight:600;overflow-wrap:anywhere}
 .pp-txt small{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pp-act .pp-ico{background:color-mix(in srgb,var(--ink) 8%,var(--card));color:var(--ink)}
+
+/* Days CSV sheet */
+.csv-top{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.csv-h{margin:14px 0 0;font:700 15px var(--display)}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin:-2px 0 4px}
+.tag{min-height:34px;padding:0 12px;border-radius:999px;font-size:13px;background:var(--soft);color:var(--ink);border:1px solid var(--line)}
+.tag[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#fff}
+.csv-queue{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:4px}
+.csv-queue li{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:6px 8px;border-radius:var(--r-sm);background:var(--soft)}
+.q-t{font-size:12px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
+.q-m{display:grid;min-width:0}.q-m small{color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+
+/* ================= v37: minimal overview, bigger map, iOS polish ================= */
+/* Map: as tall as the phone allows; controls in one row (Fit all · 1·2·3 · style · locate) */
+.map-shell{height:calc(100dvh - var(--safe-t) - 61px - var(--tabbar) - var(--safe-b) - 150px);min-height:340px;max-height:none}
+@media (max-width:759px){.map-shell{height:calc(100dvh - var(--safe-t) - 61px - var(--tabbar) - var(--safe-b) - 150px);min-height:340px}}
+.map-ctrls{left:10px;right:10px;justify-content:flex-end;flex-wrap:wrap;gap:6px}
+.map-btn{min-height:44px;min-width:44px;font-size:13px;padding:0 12px;box-shadow:0 1px 4px #0002;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.route-toggle{position:static;transform:none;top:auto;left:auto;gap:0;padding:0 8px;border:2px solid transparent}
+.route-toggle:active{transform:scale(.97)}
+.route-toggle .rt-ico{min-width:36px}
+.map-status{top:62px;margin-right:0}
+
+/* Categories: small pills in one scrolling row */
+.cat-toggle{display:flex;flex-wrap:nowrap;gap:6px;padding:8px 12px 2px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;overscroll-behavior-x:contain}
+.cat-toggle::-webkit-scrollbar{display:none}
+.cat-chip{flex:none;min-height:36px;gap:6px;padding:0 12px 0 5px;border-width:1px;border-radius:999px;font-size:13px;font-weight:600;white-space:nowrap;touch-action:manipulation}
+.cat-chip .cat-badge{width:24px;height:24px;box-shadow:none}
+.cat-chip small{font-size:12px}
+.cat-act{flex:none;min-height:36px;padding:0 14px;border-radius:999px;font-size:13px;font-weight:600;white-space:nowrap;touch-action:manipulation}
+.cat-act:not(.ghost){background:var(--ink);color:var(--card);border-color:var(--ink)}
+.cat-act.ghost{background:none;color:var(--muted)}
+@media (max-width:359px){.cat-toggle{grid-template-columns:none}}
+
+/* Tighter filters and search */
+.week-bar{margin:6px 12px 0;gap:4px}
+.search{padding:4px 12px 0}
+.search input{min-height:40px}
+.place-list{margin:4px 12px 0}
+
+/* iOS: no tap delay, no text-size jump, safe areas on sheets and tabs */
+button,a,.place-row,.cat-chip{touch-action:manipulation}
+dialog#sheet{padding-bottom:var(--safe-b)}
+.sheet-foot{padding-bottom:calc(10px + var(--safe-b))}
+.place-list,.view-days,.week-tabs,.disc-chips{-webkit-overflow-scrolling:touch}
+.discover-quick small{display:none}
+.discover-buttons button{min-height:40px}

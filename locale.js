@@ -27,7 +27,6 @@ Object.assign(ZH,{
   'APA Hotel Takamatsu Kawaramachi':'APA 高松瓦町酒店','Kotoden Takamatsu-Chikko Station':'琴電高松築港站','Marugamemachi Arcade · Slowpoke spots':'丸龜町商店街・呆呆獸景點','animate Takamatsu':'animate 高松店','Don Quijote Takamatsu Marugamemachi':'唐吉訶德高松丸龜町店','Takamatsu Mitsukoshi':'高松三越','Udon Baka Ichidai':'手打十段烏冬 Baka 一代','Merikenya Takamatsu Ekimae':'Merikenya 高松站前店','Niku no Kindo · olive beef yakiniku':'肉の近どう・橄欖牛燒肉','Yotteya · honetsukidori yatai':'Yotteya・骨付鳥屋台','Matsushita Seimenjo':'松下製麵所','Ritsurin Garden · Slowpoke stamps':'栗林公園・呆呆獸印章','Takamatsu Airport · Slowpoke corner':'高松機場・呆呆獸專區','Slowpoke Postbox · Central Post Office':'中央郵便局・呆呆獸郵筒','Slowpoke Park Ayagawa':'綾川呆呆獸公園','Takinomiya Michi-no-Eki':'道之驛瀧宮','Yamagoe Udon':'山越烏冬','Kotohira-gu Shrine':'金刀比羅宮','Nakano Udon School':'中野烏冬學校',
   'No allocated expenses':'尚無已分攤開支','No transfers':'無需轉賬','Full screen':'全螢幕','Reset bearing to north':'重設為北方'
 });
-Object.assign(ZH,{'Destination timezone':'目的地時區','Home timezone':'居住地時區','Time is in':'時間所屬時區','trip':'旅程','home':'本地','days to go':'天後出發','Trip ended':'旅程已結束','days ago':'天前','Between days':'行程期間','Home time':'本地時間','Timezone':'時區','Enter a valid timezone, e.g. Asia/Tokyo.':'請輸入有效時區，例如 Asia/Tokyo'});
 function t(value){
   if(language!=='zh')return value;
   const text=String(value),trim=text.trim();
@@ -117,7 +116,7 @@ Object.assign(ZH,{'For this day':'按當天','Near me':'我附近','Add days to 
   'This day has no map location yet. Add a place with a location, or set the day’s Area (e.g. Tokyo).':'這天未有地圖位置。加入有位置的地點，或在「編輯日子」填地區（例如 Tokyo）',
   'More nearby':'更多附近','OpenStreetMap':'OpenStreetMap 即時資料','No other shops found nearby.':'附近找不到其他店','Searching…':'搜尋中…','Search 小红书 for this area':'在小紅書搜尋這一區',
   'Import shop list':'匯入店舖清單','Locating…':'定位中…','Live shop search is busy. Try again in a minute.':'即時搜尋繁忙，請稍後再試','Not a shop list.':'不是店舖清單檔案',
-  'Day in this week':'這週的哪一天','Week':'全週','all':'全部','Whole week':'整週',
+  'Day in this week':'這週的哪一天','Week':'全週','all':'全部',
   'Clothes':'服裝','Second-hand':'二手','Shoes':'鞋','Bags':'手袋','Jewellery':'首飾','Accessories':'配飾','Hats':'帽子','Department store':'百貨公司','Mall':'商場','Your plan already has every saved shop here. Try “More nearby”.':'已收錄的店都已在你的行程內，試試「更多附近」','Outside saved cities: tap “More nearby”':'不在已收錄城市：請按「更多附近」'});
 Object.assign(ZH,{"Google Maps link": "Google 地圖連結", "Photo": "照片", "小红书 text": "小紅書文字", "Paste 小红书 note text": "貼上小紅書筆記文字", "Copy the note’s text in the 小红书 app and paste it here. Nothing is sent to 小红书.": "在小紅書 App 複製筆記文字後貼到這裡。不會向小紅書傳送任何資料。", "Paste a Google Maps share link (or its share text). Name, label and location are filled in for you.": "貼上 Google 地圖分享連結（或分享文字）。名稱、分類及位置會自動填入。", "Not sure what the place is? Send the photo to Google Lens, then type what it finds in the hint box below.": "不確定是哪裡？先把照片交給 Google Lens，再把結果填入下方提示欄。", "Open Google Lens": "打開 Google Lens", "Import shop list": "匯入店舖清單", "Paste note text or a JSON list": "貼上筆記文字或 JSON 清單", "Or add screenshots of the note": "或加入筆記截圖", "Area hint": "地區提示", "Find shops": "尋找店舖", "Choose a .json file": "選擇 .json 檔案", "Reading screenshot…": "正在讀取截圖…", "Paste text or add a screenshot first.": "請先貼上文字或加入截圖。", "No shops found. Lines like “📍 name｜note” and “地址：…” work best.": "找不到店舖。「📍 店名｜備註」及「地址：…」格式最適合。", "Locating…": "定位中…", "Add selected places": "加入所選地點", "No location yet": "未有位置"});
 
@@ -126,8 +125,7 @@ Object.assign(ZH,{
   'Sync now':'立即同步','Sign out':'登出','Sign in with Google':'用 Google 登入','Sync trips between your phones':'在你的手機之間同步行程',
   'Signed out. Trips stay on this phone.':'已登出。行程仍保留在這部手機。',
   'Sign in to use AI features.':'請先登入才能使用 AI 功能。','Daily AI limit reached. Try tomorrow.':'今日 AI 用量已達上限，請明天再試。',
-  'Ask AI about this trip':'向 AI 查詢這個行程','Your question':'你的問題','Ask':'提問','Thinking…':'思考中…',
-  'e.g. Is day 3 too packed? What can I swap for rain?':'例如：第 3 天是否太趕？下雨可以換成什麼？',
+  'Thinking…':'思考中…',
   'Read with AI (Gemini): text and screenshots are sent to Google':'用 AI（Gemini）讀取：文字和截圖會傳送到 Google'
 });
 
@@ -135,11 +133,11 @@ Object.assign(ZH,{
   'Route':'路線','Numbered route':'編號路線','Tap places on the map in order. 1 = start, the last one = end.':'按次序點選地圖上的地點。1 = 起點，最後一個 = 終點。','Open in Google Maps':'在 Google 地圖開啟','Pick one more place':'再選一個地點','Get directions':'取得路線','Travel mode':'交通方式','Drive':'駕車','Walk':'步行','Bike':'單車',
   'Google Maps allows up to 11 points: a start, 9 stops and an end.':'Google 地圖最多 11 個點：起點、9 個中途點和終點。','Dark map':'深色地圖',
   'Stop removed':'已移除行程','Tap a stop to edit · swipe right to remove':'點一下行程即可編輯 · 向右滑動即可移除',
-  'AI itinerary':'AI 行程建議','Suggest stops':'建議行程','Your wishes (optional)':'你的願望（可選）','e.g. vintage shops, ramen, not too much walking':'例如：古著店、拉麵、不要走太多路','Pace':'節奏','Relaxed':'悠閒','Balanced':'均衡','Packed':'緊湊',
-  'Open a week, then slide to a day.':'展開一週，再拉到某一天。','Gemini key':'Gemini 金鑰','Gemini API key from Google AI Studio (saved on this device only; leave empty to remove)':'Google AI Studio 的 Gemini API 金鑰（只儲存在此裝置；留空即移除）',
-  'Sign in or save a Gemini key on this device to use AI.':'請先登入，或在此裝置儲存 Gemini 金鑰才能使用 AI。','Your trip summary and wishes are sent to Google Gemini. Check opening hours before you go.':'行程摘要和你的願望會傳送到 Google Gemini。出發前請確認營業時間。',
-  'No suggestions came back. Try again or change the wishes.':'沒有收到建議，請重試或修改願望。','Also pin them on the map (looks up locations)':'同時在地圖加上圖釘（會查找位置）','Add':'加入','AI stops added':'已加入 AI 建議行程',
-  'Could not reach Gemini. Check the connection.':'無法連線到 Gemini，請檢查網絡。','Gemini rejected the key. Check it and try again.':'Gemini 拒絕了金鑰，請檢查後重試。','Gemini is busy or its free limit is reached. Try again later.':'Gemini 繁忙或已達免費用量，請稍後再試。','The AI service returned an error.':'AI 服務出錯。'
+  'Pace':'節奏','Relaxed':'悠閒','Balanced':'均衡','Packed':'緊湊',
+  
+  
+  'Add':'加入',
+  
 });
 
 Object.assign(ZH, {'Search saved places, or type a new one':'搜尋已儲存地點，或輸入新地點','Links this stop to a pin on the map. Leave empty for a plain stop.':'將此行程連結到地圖上的地點。留空則為一般行程。','no pin':'未設定位置','Change place':'更換地點','Clear place':'清除地點','No saved place matches.':'沒有符合的已儲存地點。','Add as a new place':'新增為新地點','Find on the map':'在地圖上搜尋','No pin yet. You can set it later.':'尚無位置，之後可再設定。','Searches OpenStreetMap and keeps the pin.':'搜尋 OpenStreetMap 並保留位置。','Suggested':'建議','This day':'本日','All places':'所有地點','Type to search the rest.':'輸入文字搜尋其餘地點。','No saved places yet. Type a name to add one.':'尚無已儲存地點，輸入名稱即可新增。','Searching…':'搜尋中…'});
@@ -147,3 +145,6 @@ Object.assign(ZH, {'Drag to reorder':'拖曳排序','Map place':'地圖地點',"
 Object.assign(ZH, {'Light Map':'淺色地圖','Normal Map':'一般地圖','Map style':'地圖樣式','Focus city':'聚焦城市','All cities':'所有城市','Fit all':'顯示全部地點','Show my location':'顯示我的位置','Place description':'地點詳情','Filter by day':'按日期篩選','No visible pins. Clear the filters.':'沒有符合篩選條件的圖釘，請清除篩選後再試。','Route in Google Maps':'在 Google 地圖查看路線','No places match. Clear search or filters.':'找不到符合條件的地點，請清除搜尋或篩選。','Edit day':'編輯當日行程','Delete day':'刪除當日行程','Add stop':'新增一站','Directions':'路線指引','Shopping':'購物'});
 
 Object.assign(ZH, {'Add a day first':'請先新增一天'});
+Object.assign(ZH,{'Days CSV':'行程 CSV','Import CSV':'匯入 CSV','Export CSV':'匯出 CSV','Blank template':'空白範本','Columns':'欄位','Export and import use the same columns, so an exported file can be edited and imported again. Importing only adds; stops already in the trip are skipped.':'匯出與匯入使用相同欄位，匯出的檔案可修改後再匯入。匯入只會新增，已存在的行程會略過。','Quick entry':'快速輸入','Fill in a stop, tap tags, press Add row. Download the rows as a CSV, or add them to this trip now.':'填寫行程、點選標籤、按「新增列」。可下載成 CSV，或直接加入此旅程。','New day after the last':'最後一天之後新增一天','Type, or pick a saved place':'輸入，或選擇已存地點','Add row':'新增列','Download rows':'下載列表','Add to this trip':'加入此旅程','Clear':'清除','Imported':'已匯入','new days':'個新日子','skipped':'略過','warnings':'個警告','Enter a title or a map place.':'請輸入標題或地圖地點。','Header row not recognised. Use the template columns.':'無法辨識標題列，請使用範本欄位。','Nothing new: those stops are already in the trip.':'沒有新內容：這些行程已在旅程中。','No stops found in the file.':'檔案中找不到行程。','The file has no rows.':'檔案沒有資料列。','File is too large.':'檔案太大。'});
+
+Object.assign(ZH,{'Find Nearby':'搜尋附近'});

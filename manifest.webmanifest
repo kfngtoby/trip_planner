@@ -1,7 +1,7 @@
 {
   "name": "Trip companion",
   "short_name": "Trips",
-  "description": "Offline-first trip planner: itinerary, map, food and shopping discovery, expense splitting and timezones.",
+  "description": "Offline-first trip planner: itinerary, map, food and shopping discovery, expense splitting and CSV import/export.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

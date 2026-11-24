@@ -18,22 +18,3 @@ async function aiExtractPlaces(text, files) {
   for (const f of [...files].slice(0, 6)) images.push(await aiBlob(await aiShrinkFile(f)));
   return (await aiCall('extract_places', { text: String(text || '').slice(0, 12000), images })).places || [];
 }
-/* Ask a question about one trip. Sends a compact summary of the trip, not the whole backup. */
-function tripBrief(trip) {
-  const spot = id => trip.spots?.find(s => s.id === id);
-  return { name: trip.name, tz: trip.tz, currency: trip.currency, days: trip.days.map((d, i) => ({ n: i + 1, date: d.date, title: d.title || '', items: (d.items || []).map(it => { const s = spot(it.spotId); return [it.time, s ? `${s.name}${s.city ? ', ' + s.city : ''}` : '', it.note].filter(Boolean).join(' · '); }).filter(Boolean) })) };
-}
-function askAiSheet(trip) {
-  openSheet({ title: t('Ask AI about this trip'), submit: null, body: `
-    <label>${t('Your question')}<textarea id="ai-q" rows="3" placeholder="${esc(t('e.g. Is day 3 too packed? What can I swap for rain?'))}"></textarea></label>
-    <button type="button" class="primary wide" id="ai-go">${t('Ask')}</button>
-    <p class="hint" id="ai-st" aria-live="polite"></p><div id="ai-out" class="ai-out"></div>`,
-  onOpen: root => {
-    root.querySelector('#ai-go').onclick = async () => {
-      const q = root.querySelector('#ai-q').value.trim(), st = root.querySelector('#ai-st'), out = root.querySelector('#ai-out'); if (!q) return;
-      st.textContent = t('Thinking…'); out.textContent = '';
-      try { out.textContent = (await aiCall('ask', { question: q.slice(0, 1000), trip: tripBrief(trip), lang: typeof language !== 'undefined' ? language : 'en' })).answer || ''; st.textContent = ''; }
-      catch (e) { st.textContent = e.message; }
-    };
-  } });
-}

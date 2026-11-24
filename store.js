@@ -182,8 +182,6 @@ function loadDb() {
     db = { version: 3, trips: [structuredClone(SEED_TRIP)] };
     saveDb();
   }
-  // trips made before timezone support: give them a destination/home zone (editable via Rename trip → Timezones)
-  db.trips.forEach(tr => { if (!tzValid(tr.homeTz)) tr.homeTz = deviceTz(); if (!tzValid(tr.tz)) tr.tz = tr.id === 'trip-setouchi' ? 'Asia/Tokyo' : tr.homeTz; });
   // merge researched places/notes into the example trip (once per trip, never overwrites user edits)
   if (typeof applySeedPatches === 'function' && db.trips.map(applySeedPatches).some(Boolean)) saveDb();
 }
@@ -211,8 +209,11 @@ function addDays(iso, n) {
   const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-// Device-local date (the old version used UTC, which gave the wrong day for Asia mornings). Trip screens use todayIn(tripTz(trip)).
-const todayIso = () => todayIn(deviceTz());
+// Device-local date as YYYY-MM-DD.
+const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const todayDay = tr => tr.days.find(d => d.date === todayIso());
+// Clock minutes from a stop time such as "09:00" or "21:00–22:00" (start time), or null.
+const timeMins = s => { const m = /(\d{1,2})[:：.](\d{2})/.exec(s || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; };
 
 /* ---------- trip helpers ---------- */
 function dayColor(trip, dayId) {

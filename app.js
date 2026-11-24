@@ -54,23 +54,13 @@ function renderHome() {
   if (typeof renderAccount === 'function') renderAccount();
 }
 
-// Timezone pickers: presets + any IANA name (datalist), so every zone in the world is possible.
-function tzFields(trip) {
-  const opts = TZ_PRESETS.map(([z, n]) => `<option value="${esc(z)}">${esc(n)}</option>`).join('');
-  const dest = trip ? tripTz(trip) : 'Asia/Tokyo', home = trip ? homeTz(trip) : deviceTz();
-  return `<div class="pair"><label>Destination timezone<input name="tz" list="tz-list" value="${esc(dest)}" autocapitalize="off" spellcheck="false"></label>
-    <label>Home timezone<input name="homeTz" list="tz-list" value="${esc(home)}" autocapitalize="off" spellcheck="false"></label></div>
-    <datalist id="tz-list">${opts}</datalist>`;
-}
-
 function tripForm(trip) {
   const editing = !!trip;
   openSheet({
     title: editing ? 'Rename trip' : 'New trip',
     submit: editing ? 'Save' : 'Create trip',
     body: `
-      <label>Trip name<input name="name" required maxlength="80" value="${esc(trip?.name || '')}" placeholder="e.g. Tokyo with friends"></label>
-      ${tzFields(trip)}
+      <label>Trip name<input name="name" required maxlength="80" value="${esc(trip?.name || '')}" placeholder="e.g. Summer trip"></label>
       ${editing ? `<label>Currency<input name="currency" maxlength="5" value="${esc(trip.currency)}"></label>` : `
       <div class="pair"><label>Start date<input name="start" type="date" required value="${todayIso()}"></label>
       <label>Number of days<input name="count" type="number" min="1" max="60" value="3" required inputmode="numeric"></label></div>
@@ -79,12 +69,10 @@ function tripForm(trip) {
     onSubmit: f => {
       const name = f.get('name').trim(); if (!name) return sheetError('A name is required.');
       const currency = (f.get('currency') || 'HKD').trim().toUpperCase() || 'HKD';
-      const tz = f.get('tz') || deviceTz(), home = f.get('homeTz') || deviceTz();
-      if (!tzValid(tz) || !tzValid(home)) return sheetError('Enter a valid timezone, e.g. Asia/Tokyo.');
-      if (editing) { Object.assign(trip, { name, currency, tz, homeTz: home }); saveDb(); route(); return; }
+      if (editing) { Object.assign(trip, { name, currency }); saveDb(); route(); return; }
       const count = Math.min(60, Math.max(1, parseInt(f.get('count'), 10) || 1));
-      const start = f.get('start') || todayIn(tz);
-      const nt = { id: uid('trip'), name, currency, tz, homeTz: home, members: [{ id: uid('m'), name: 'You' }], spots: [], expenses: [],
+      const start = f.get('start') || todayIso();
+      const nt = { id: uid('trip'), name, currency, members: [{ id: uid('m'), name: 'You' }], spots: [], expenses: [],
         days: Array.from({ length: count }, (_, i) => ({ id: uid('d'), date: addDays(start, i), title: '', place: '', items: [] })) };
       db.trips.push(nt); saveDb(); closeSheet(); go(`#/trip/${nt.id}/days`);
     }
@@ -100,7 +88,6 @@ function tripMenu(id) {
       <button data-act="duplicate">Duplicate trip</button>
       <button data-act="export">Export trip backup</button>
       <button data-act="kml">Export for Google My Maps (KML)</button>
-      ${typeof aiAvailable === 'function' && aiAvailable() ? `<button data-act="ai">${t('Ask AI about this trip')}</button>` : ''}
       <button data-act="delete" class="danger">Delete trip</button></div>`,
     onOpen: root => root.onclick = e => {
       const act = e.target.closest('[data-act]')?.dataset.act; if (!act) return;
@@ -108,7 +95,6 @@ function tripMenu(id) {
       if (act === 'duplicate') { const c = structuredClone(trip); c.id = uid('trip'); c.name = trip.name + ' (copy)'; db.trips.push(c); saveDb(); closeSheet(); route(); }
       if (act === 'export') download(`${slug(trip.name)}.json`, JSON.stringify({ version: 3, trip }, null, 2));
       if (act === 'kml') exportKml(trip);
-      if (act === 'ai') askAiSheet(trip);
       if (act === 'delete' && confirm(`${t('Delete trip')}: “${trip.name}”?`)) { db.trips = db.trips.filter(x => x.id !== id); if (typeof syncDeleteTrip === 'function') syncDeleteTrip(id); saveDb(); closeSheet(); go('#/'); }
     }
   });
@@ -176,27 +162,6 @@ function inlineRename() {
   input.onblur = () => done(true);
 }
 
-/* ================= TIMEZONE UI ================= */
-// Small strip: destination clock vs home clock + where the trip is right now (judged by the destination's calendar).
-function tzStrip(tr) {
-  const dz = tripTz(tr), hz = homeTz(tr), now = new Date(), same = dz === hz, ph = tripPhase(tr);
-  const phase = !ph ? '' : ph.kind === 'now' ? `${t('Day')} ${ph.dayIndex + 1}/${tr.days.length}` : ph.kind === 'before' ? `${ph.days} ${t('days to go')}` : ph.kind === 'after' ? `${t('Trip ended')} ${ph.days} ${t('days ago')}` : t('Between days');
-  return `<div class="tz-strip" role="group" aria-label="${t('Timezone')}">
-    <span class="tz-clock"><small>${esc(tzLabel(dz))}</small><b>${tzClock(dz, now)}</b><small>${esc(tzShort(dz, now))}</small></span>
-    ${same ? '' : `<span class="tz-clock home"><small>${esc(tzLabel(hz))}</small><b>${tzClock(hz, now)}</b><small>${esc(tzShort(hz, now))}</small></span>
-    <span class="tz-diff">${esc(tzDiffLabel(hz, dz, now))}</span>`}
-    ${phase ? `<span class="tz-phase ${ph.kind}">${esc(phase)}</span>` : ''}</div>`;
-}
-// Home-time equivalent for a timed stop, e.g. "08:00 HKT" (+1d / −1d when it crosses midnight).
-function stopTzHint(tr, d, it) {
-  const h = homeEquivalent(tr, d, it); if (!h) return '';
-  const shift = h.dayShift ? ` ${h.dayShift > 0 ? '+' : '−'}${Math.abs(h.dayShift)}d` : '';
-  const own = it.tz && tzValid(it.tz) && it.tz !== tripTz(tr) ? `<small class="tz-own">${esc(tzShort(it.tz))}</small>` : '';
-  return `${own}<small class="tz-home" title="${esc(t('Home time'))}">≙ ${h.time}${shift}</small>`;
-}
-// Keep the clock ticking while a trip screen is open (once per minute is enough).
-setInterval(() => { document.querySelectorAll('.tz-strip').forEach(el => { const tr = current.tripId && getTrip(current.tripId); if (tr) el.outerHTML = tzStrip(tr); }); }, 30000);
-
 /* ================= DAYS TAB ================= */
 /* ---- day planning helpers (pure, no DOM) ---- */
 const kmBetween = (a, b) => {
@@ -225,8 +190,8 @@ function optimiseOrder(pts) {
 }
 const pathKm = pts => pts.reduce((n, p, i) => i ? n + kmBetween(pts[i - 1], p) : 0, 0);
 // Stops that carry a clock time are sorted among themselves; untimed stops keep their position.
-function sortItemsByTime(items, tr, day) {
-  const mins = it => { const m = timeMins(it.time); return m === null ? null : (tr && it.tz && tzValid(it.tz) ? m - tzOffsetMin(it.tz, new Date(day.date + 'T12:00:00Z')) + tzOffsetMin(tripTz(tr), new Date(day.date + 'T12:00:00Z')) : m); };
+function sortItemsByTime(items) {
+  const mins = it => timeMins(it.time);
   const slots = items.map((it, i) => mins(it) === null ? -1 : i).filter(i => i >= 0);
   const sorted = slots.map(i => items[i]).sort((a, b) => mins(a) - mins(b));
   const out = [...items]; slots.forEach((slot, k) => out[slot] = sorted[k]);
@@ -246,15 +211,14 @@ function dayStats(tr, d) {
 }
 function legHtml(tr, d, ix) {
   const a = ix && itemSpot(tr, d.items[ix - 1]), b = itemSpot(tr, d.items[ix]);
-  const el = ix && (d.items[ix - 1].tz || d.items[ix].tz) && elapsedMins(tr, d, d.items[ix - 1], d.items[ix]);
   const dist = a && b ? `≈${fmtKm(kmBetween(a, b))}` : '';
-  return dist || el ? `<li class="leg" aria-hidden="true">↓ ${[dist, el ? `⏱ ${fmtMins(el)}` : ''].filter(Boolean).join(' · ')}</li>` : '';
+  return dist ? `<li class="leg" aria-hidden="true">↓ ${dist}</li>` : '';
 }
 function dayAction(act, dayId, extra) {
   const tr = trip(), d = tr.days.find(x => x.id === dayId); if (!d) return;
   const snap = snapshot(tr);
   if (act === 'sort') {
-    const next = sortItemsByTime(d.items, tr, d);
+    const next = sortItemsByTime(d.items);
     if (next.every((it, i) => it === d.items[i])) return toast('Already in time order');
     d.items = next; saveDb(); renderDaysTab(); return undoToast('Sorted by time', snap);
   }
@@ -291,21 +255,19 @@ function renderDaysTab() {
         <button id="expand-all" class="text-btn" ${allOpen ? 'disabled' : ''}>${t('Expand all')}</button>
         <button id="collapse-all" class="text-btn" ${open.size ? '' : 'disabled'}>${t('Collapse all')}</button>
       </span>
-      <span class="toolbar-group">${todayDay(tr) ? `<button id="jump-today" class="text-btn">${t('Today')}</button>` : ''}<button id="add-day" class="text-btn">+ ${t('Add day')}</button></span>
+      <span class="toolbar-group">${todayDay(tr) ? `<button id="jump-today" class="text-btn">${t('Today')}</button>` : ''}<button id="csv-open" class="text-btn">CSV</button><button id="add-day" class="text-btn">+ ${t('Add day')}</button></span>
     </div>
     ${(() => { const qd = todayDay(tr) || tr.days.find(d => open.has(d.id)) || tr.days[0]; return qd && typeof discoveryButtons === 'function' ? `<div class="discover-quick"><small class="user-text">${discoveryLabel('Near', '附近')} · Day ${tr.days.indexOf(qd) + 1}${qd.place ? ' · ' + esc(qd.place) : ''}</small>${discoveryButtons(qd)}</div>` : ''; })()}
-    ${tzStrip(tr)}
-    ${typeof aiPanelHtml === 'function' ? aiPanelHtml(tr) : ''}
     ${tr.days.some(d => d.items.length) ? `<p class="swipe-hint">${t('Tap a stop to edit · swipe right to remove')}</p>` : ''}
     ${tr.days.length ? tr.days.map((d, i) => dayCard(tr, d, i, open.has(d.id))).join('') : `<p class="empty">No stops yet</p>`}`;
   $('#view').querySelectorAll('[data-discovery]').forEach(b => b.onclick = () => discover(tr, b.dataset.day, b.dataset.discovery));
-  if (typeof aiWire === 'function') aiWire(tr);
   $('#expand-all').onclick = () => { tr.days.forEach(d => open.add(d.id)); renderDaysTab(); };
   $('#collapse-all').onclick = () => { open.clear(); renderDaysTab(); $('#view').scrollTo({ top: 0 }); };
   $('#jump-today')?.addEventListener('click', () => { const td = todayDay(tr); open.add(td.id); renderDaysTab(); document.getElementById('day-' + td.id)?.scrollIntoView({ block: 'start' }); });
+  $('#csv-open').onclick = () => csvSheet(tr);
   $('#add-day').onclick = () => {
     const last = tr.days[tr.days.length - 1];
-    const d = { id: uid('d'), date: last ? addDays(last.date, 1) : todayIn(tripTz(tr)), title: '', place: '', items: [] };
+    const d = { id: uid('d'), date: last ? addDays(last.date, 1) : todayIso(), title: '', place: '', items: [] };
     tr.days.push(d); open.add(d.id); saveDb(); renderDaysTab();
     document.getElementById('day-' + d.id)?.scrollIntoView({ block: 'center' });
   };
@@ -313,7 +275,7 @@ function renderDaysTab() {
 
 function dayCard(tr, d, i, isOpen) {
   const color = DAY_COLORS[i % DAY_COLORS.length], spots = daySpots(tr, d), route = gmapsRouteUrl(spots);
-  const isToday = d.date === todayIn(tripTz(tr));
+  const isToday = d.date === todayIso();
   return `<section class="day ${isOpen ? 'open' : ''}" id="day-${esc(d.id)}" style="--c:${color}">
     <button class="day-head" data-toggle-day="${esc(d.id)}" aria-expanded="${isOpen}" aria-controls="body-${esc(d.id)}">
       <span class="day-num"><span>Day ${i + 1}</span><small>${esc(fmtDate(d.date))}</small></span>
@@ -328,7 +290,7 @@ function dayCard(tr, d, i, isOpen) {
         return `${legHtml(tr, d, ix)}<li class="stop">
           <span class="stop-del" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>${t('Remove')}</span>
           <div class="stop-in has-reorder" data-edit-item="${esc(d.id)}|${esc(it.id)}" data-stop="${esc(d.id)}|${esc(it.id)}">
-          <span class="stop-time user-text">${esc(it.time)}${stopTzHint(tr, d, it)}</span>
+          <span class="stop-time user-text">${esc(it.time)}</span>
           <div class="stop-main">
             <button class="stop-title user-text" data-edit-item="${esc(d.id)}|${esc(it.id)}">${s ? `<span class="cat-badge sm" style="--c:${CATS[s.cat]?.color || color}" title="${esc(CATS[s.cat]?.label || '')}">${catIcon(s.cat, 12)}</span>` : ''}<span>${esc(L(it, 'title') || '—')}</span></button>
             ${it.note ? `<p class="user-text">${esc(L(it, 'note')).replace(/\n/g, '<br>')}</p>` : ''}
@@ -388,7 +350,6 @@ function itemForm(dayId, itemId) {
     title: itemId ? 'Edit stop' : 'Add stop', submit: 'Save',
     body: `<div class="pair pair-time"><label>Time<input name="time" maxlength="40" value="${esc(it.time)}" placeholder="09:00"></label>
       <label>Title<input name="title" required maxlength="160" value="${esc(it.title)}"></label></div>
-      <label>Time is in<select name="tz"><option value="">${esc(tzLabel(tripTz(tr)))} (${t('trip')})</option>${[...new Set([homeTz(tr), ...TZ_PRESETS.map(p => p[0])])].filter(z => z !== tripTz(tr)).map(z => `<option value="${esc(z)}" ${z === it.tz ? 'selected' : ''}>${esc(tzLabel(z))}${z === homeTz(tr) ? ` (${t('home')})` : ''}</option>`).join('')}</select></label>
       <label>Notes<textarea name="note" rows="3" maxlength="1500">${esc(it.note)}</textarea></label>
       <div class="place-pick" id="place-pick"><label for="pp-q">${t('Map place')}</label>
         <input type="hidden" name="spotId" value="${esc(it.spotId || '')}">
@@ -402,7 +363,7 @@ function itemForm(dayId, itemId) {
     onSubmit: f => {
       const title = f.get('title').trim(); if (!title) return sheetError('A name is required.');
       if (pending.spot && f.get('spotId') === pending.spot.id) tr.spots.push(pending.spot); // a place created in the picker is only kept when the stop is saved
-      Object.assign(it, { time: f.get('time').trim(), tz: f.get('tz') || '', title, note: f.get('note').trim(), spotId: f.get('spotId') });
+      Object.assign(it, { time: f.get('time').trim(), title, note: f.get('note').trim(), spotId: f.get('spotId') });
       const target = tr.days.find(x => x.id === f.get('dayId')) || d;
       if (!itemId) { it.id = uid('i'); target.items.push(it); }
       else if (target !== d) { d.items = d.items.filter(x => x !== it); target.items.push(it); }

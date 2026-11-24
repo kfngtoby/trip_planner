@@ -39,8 +39,8 @@ function renderLegend() {
   el.innerHTML = present.map(k => {
     const on = activeCats.has(k);
     return `<button type="button" class="cat-chip" data-cat="${k}" aria-pressed="${on}" style="--c:${CATS[k].color}">
-      <b class="cat-badge">${catIcon(k, 22)}</b><span class="cat-txt"><span class="cat-name">${esc(CATS[k].label)}</span><small>${base.filter(s => s.cat === k).length}</small></span><i class="cat-pm" aria-hidden="true">${on ? '−' : '+'}</i></button>`;
-  }).join('') + `<div class="cat-quick"><button type="button" data-find="food">${discoveryLabel('Find food', '找美食')}</button><button type="button" data-find="shop">${discoveryLabel('Find shopping', '找店舖')}</button>${present.length ? `<button type="button" data-cat-none ${activeCats.size ? '' : 'disabled'}>${discoveryLabel('Clear', '清除')}</button>` : ''}</div>`;
+      <b class="cat-badge">${catIcon(k, 14)}</b><span class="cat-name">${esc(CATS[k].label)}</span><small>${base.filter(s => s.cat === k).length}</small></button>`;
+  }).join('') + `<button type="button" class="cat-act" data-find="shop">${discoveryLabel('Find Nearby', '搜尋附近')}</button>${present.length ? `<button type="button" class="cat-act ghost" data-cat-none ${activeCats.size ? '' : 'disabled'}>${discoveryLabel('Clear', '清除')}</button>` : ''}`;
 }
 
 const spotDayTags = (tr, s) => s.days.map(did => { const i = tr.days.findIndex(d => d.id === did); return i < 0 ? '' : `<span class="tag" style="--c:${dayColor(tr, did)}">Day ${i + 1}</span>`; }).join('');
@@ -109,13 +109,11 @@ function renderMapTab() {
   $('#view').innerHTML = `
     <div class="map-shell">
       <div id="map" aria-label="${t('Interactive trip map')}"></div>
-      <div class="map-ctrls"><button id="fit-map" class="map-btn">${t('Fit all')}</button><button id="map-style" class="map-btn" type="button"></button><button id="locate" class="map-btn" aria-label="${t('Show my location')}">⌖</button></div>
-      <button id="route-toggle" class="map-btn route-toggle" type="button" role="switch" aria-checked="false" aria-pressed="false" aria-label="${t('Numbered route')}"><span class="rt-ico" aria-hidden="true">1·2·3</span><span class="rt-txt">${t('Route')}</span></button>
+      <div class="map-ctrls"><button id="fit-map" class="map-btn">${t('Fit all')}</button><button id="route-toggle" class="map-btn route-toggle" type="button" role="switch" aria-checked="false" aria-pressed="false" aria-label="${t('Numbered route')}"><span class="rt-ico" aria-hidden="true">1·2·3</span></button><button id="map-style" class="map-btn" type="button"></button><button id="locate" class="map-btn" aria-label="${t('Show my location')}">⌖</button></div>
       <div id="route-panel" class="route-panel" hidden></div>
       <p id="map-status" class="map-status" role="status"></p>
       <div id="spot-card" class="spot-card" role="dialog" aria-label="${t('Place description')}" hidden></div>
     </div>
-    ${tzStrip(tr)}
     <div class="week-bar" id="week-bar" role="group" aria-label="${t('Filter by day')}"></div>
     <div class="cat-toggle" id="cat-legend" role="group" aria-label="${t('Categories')}"></div>
     <label class="search"><span class="sr-only">${t('Search')}</span><input id="place-search" type="search" placeholder="${t('Search')}" value="${esc(placeQuery)}" aria-label="${t('Search spots')}"></label>
@@ -203,7 +201,7 @@ function renderMapTab() {
 
 function renderWeekBar() {
   const tr = trip(), el = $('#week-bar'); if (!el) return;
-  const n = weekCount(tr), w = activeWeek(tr), today = todayIn(tripTz(tr)), zh = typeof language !== 'undefined' && language === 'zh';
+  const n = weekCount(tr), w = activeWeek(tr), today = todayIso(), zh = typeof language !== 'undefined' && language === 'zh';
   const range = days => {
     if (!days.length) return '';
     const a = days[0].date, z = days[days.length - 1].date;

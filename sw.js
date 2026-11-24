@@ -1,11 +1,11 @@
 // Caches the app so it opens without signal (e.g. on a train in Japan).
-// Deploy: bump V here AND the ?v= ids in index.html (same value), e.g. with: sed -i 's/34-drag-ai/NEW/g' sw.js index.html
-const V = '34-drag-ai';
+// Deploy: bump V here AND the ?v= ids in index.html (same value), e.g. with: sed -i 's/37-nearby/NEW/g' sw.js index.html
+const V = '37-nearby';
 const VERSION = 'trips-v' + V;
 const q = f => f + '?v=' + V;
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', q('style.css'),
-  ...['locale', 'seed', 'seed-research', 'tz', 'store', 'fashion-catalog', 'places', 'reco', 'fx', 'receipt', 'locate', 'splitter',
-    'firebase-config', 'sync', 'ai', 'plan', 'discovery', 'app', 'slowpoke'].map(n => q(n + '.js'))];
+  ...['locale', 'seed', 'seed-research', 'store', 'fashion-catalog', 'places', 'reco', 'fx', 'receipt', 'locate', 'splitter',
+    'firebase-config', 'sync', 'ai', 'discovery', 'csv', 'app', 'slowpoke'].map(n => q(n + '.js'))];
 const OPTIONAL = ['icons/slowpoke.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'];
