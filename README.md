@@ -17,7 +17,7 @@ Data is stored on the device (`localStorage`, key `trip-companion-v3`). A differ
 **My trips** → tap a trip (tap the name to rename) → **Overview** (map) · **Days** · **Expenses**.
 
 - **Overview**: category chips filter the map and the grouped details under Search. Under the map: All days, Week 1, Week 2 … side by side (no arrow), then a day slider for the chosen tab. In All days the slider covers the whole trip and scrolls sideways, with an arrow column (→ W2) marking where each new week starts. Map is **Light** (muted OpenStreetMap) or **Normal** (full colour); the choice is remembered. Numbered route mode: tap pins in order, pick Drive / Walk / Bike, and open the route in Google Maps (max 11 points).
-- **Days**: expand a day to edit stops. The toolbar has separate **Import CSV** and **Export CSV** buttons (see below). Tap a stop to edit, swipe right to remove (Undo is offered). Hold the ⠿ handle to drag a stop: it lifts, the others slide aside, and it settles into place on release. Delete day is on each day card. There is no Find nearby on the Days tab; use Find Nearby on the Overview.
+- **Days**: expand a day to edit stops. The toolbar has **Import / template**, **Export CSV** and **Export Excel** buttons (see below). Tap a stop to edit, swipe right to remove (Undo is offered). Hold the ⠿ handle to drag a stop onto another one: the two **swap places** (the stop underneath glides into the dragged stop's old slot and is tinted while it waits), and the swap is saved on release. Times stay with their rows. Delete day is on each day card. There is no Find nearby on the Days tab; use Find Nearby on the Overview.
 - **Expenses**: split costs, members, settle up, CSV export. Each expense has a bill currency; a live rate is fetched (frankfurter.dev), editable, and cached for offline. The amount is stored in the trip currency with the original amount and rate kept. Receipt scan (photos or PDFs; OCR, 31 languages) detects language and currency, shows the receipt, and picks the total by itself using a dictionary of total / amount-due wording (Chinese, Japanese and English first, then the other languages; fapiao 大写 and 領収書 kanji amounts too). To change it, tap the right number on the picture: tapping the label or anywhere on that row also works, and Zoom enlarges the picture for small print. PDFs with a text layer are read directly, without OCR.
 
 ### Days CSV (`csv.js`)
@@ -121,3 +121,13 @@ Setup:
 - Not verified end to end: Firebase sign-in, Firestore sync, the Cloud Function and live Gemini calls. Google sign-in inside an iPhone home-screen app can be awkward; test that first.
 - Needs device testing: iPhone install, GPS prompts, touch gestures.
 - OCR may download language data on first use. Imports and fashion extras are local to the browser.
+
+
+### Excel / Google Sheets template (`xlsx.js`)
+CSV cannot carry formatting, so **Days → Import / template → Download Excel / Sheets template** gives a formatted `.xlsx`: coloured header, frozen header row, filters, a Category dropdown, number checks for Day / Lat / Lon, one pre-dated row per trip day, a *How to fill* tab and a *Lists* tab.
+
+- **Excel / Numbers**: open, fill the *Stops* tab, save as `.xlsx`.
+- **Google Sheets**: File → Import → Upload the template (Replace spreadsheet). Colours and dropdowns come with it. When done: File → Download → Microsoft Excel (.xlsx).
+- **Back in the app**: Import / template → Choose file → pick the `.xlsx` (or a `.csv`). The same preview-first import runs; nothing is saved until you confirm.
+- The reader finds the header row by itself, accepts times typed as 9:00 or stored as real times, real or text dates, and also reads this app's own **Export Excel** file (Type and Coordinates columns included).
+- The plain CSV template is still there as a fallback.

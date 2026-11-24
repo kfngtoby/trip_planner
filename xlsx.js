@@ -161,6 +161,127 @@ function xlsxBuild(ExcelJS, tr, now = new Date()) {
   return wb;
 }
 
+/* ---------- Fill-in template (.xlsx, works in Excel and Google Sheets) + .xlsx import ----------
+   The template keeps the same columns as the CSV (CSV_COLS) so one importer serves both. Formatting, dropdowns, frozen header
+   and the instruction sheet survive in Excel, Numbers and Google Sheets (File → Import → Upload), which a CSV cannot do.
+   Import reads the filled-in .xlsx (also a Google Sheets "Download → Microsoft Excel" file, and this app's own Export Excel). */
+const XLSX_TPL_ROWS = 80;                                   // formatted, ready-to-type rows (at least one per trip day)
+const XLSX_CORE = ['Date', 'Day', 'Time', 'Title', 'Category', 'Map place', 'Notes'];   // green headers; the rest are optional extras
+const XLSX_COL_W = { Date: 12, Time: 9, Category: 20, Day: 6, Title: 28, 'Map place': 24, Notes: 36, Lat: 11, Lon: 11, 'Day title': 20, Area: 16, Hours: 14, Link: 28 };
+
+function xlsxTemplateBuild(ExcelJS, tr, now = new Date()) {
+  const wb = new ExcelJS.Workbook(); wb.creator = 'Trips'; wb.created = now;
+  const st = wb.addWorksheet('Stops', { properties: { tabColor: { argb: XL.green } }, views: [{ state: 'frozen', ySplit: 3 }] });
+  const help = wb.addWorksheet('How to fill', { properties: { tabColor: { argb: XL.lime } } });
+  const lists = wb.addWorksheet('Lists');
+  const n = CSV_COLS.length, labels = Object.keys(CATS).map(k => CATS[k].label);
+
+  /* Lists (dropdown sources) */
+  xlsxHeadRow(lists, 1, ['Category', 'Note tags', 'Time ideas']); lists.columns = [24, 16, 16].map(width => ({ width }));
+  labels.forEach((l, i) => { lists.getCell(i + 2, 1).value = l; });
+  CSV_NOTE_TAGS.forEach((x, i) => { lists.getCell(i + 2, 2).value = `[${x}]`; });
+  CSV_TIME_TAGS.forEach(([name, v], i) => { lists.getCell(i + 2, 3).value = `${name} ${v}`; });
+  for (let r = 2; r <= 9; r++) for (let c = 1; c <= 3; c++) { const cell = lists.getCell(r, c); cell.font = xlFont(); cell.border = xlBorder(); }
+
+  /* Stops */
+  st.columns = CSV_COLS.map(c => ({ width: XLSX_COL_W[c] || 14 }));
+  xlsxTitleBar(st, n, `${tr.name || 'Trip'} · Stops template`, 'Fill in, then Import in Trips');
+  st.getCell('A2').value = 'One row per stop. Date or Day is enough to place a stop; Title is the stop name. Green columns are the usual ones, the rest are optional. See the “How to fill” tab.';
+  st.getCell('A2').font = xlFont({ color: { argb: XL.mute } });
+  xlsxHeadRow(st, 3, CSV_COLS);
+  CSV_COLS.forEach((c, i) => { if (!XLSX_CORE.includes(c)) st.getCell(3, i + 1).fill = xlFill(XL.dark); });
+  const days = tr.days.length ? tr.days : [{ date: todayIso() }], total = Math.max(XLSX_TPL_ROWS, days.length + 20);
+  const col = name => CSV_COLS.indexOf(name) + 1;
+  for (let k = 0; k < total; k++) {
+    const r = 4 + k, band = k % 2 === 1, d = days[k];
+    CSV_COLS.forEach((name, i) => {
+      const cell = st.getCell(r, i + 1); cell.font = xlFont(); cell.border = xlBorder(); if (band) cell.fill = xlFill(XL.band);
+      cell.alignment = { vertical: 'top', wrapText: name === 'Title' || name === 'Notes' || name === 'Map place', horizontal: ['Day', 'Lat', 'Lon'].includes(name) ? 'center' : 'left' };
+      if (CSV_TEXT_COLS.includes(name)) cell.numFmt = '@';       // text, so 9:00 and “=...” stay exactly as typed
+    });
+    st.getCell(r, col('Date')).numFmt = 'yyyy-mm-dd'; st.getCell(r, col('Day')).numFmt = '0'; st.getCell(r, col('Lat')).numFmt = '0.000000'; st.getCell(r, col('Lon')).numFmt = '0.000000';
+    if (d) { st.getCell(r, col('Date')).value = xlsxDate(d.date); st.getCell(r, col('Day')).value = k + 1; }
+    st.getCell(r, col('Category')).dataValidation = { type: 'list', allowBlank: true, formulae: [`Lists!$A$2:$A$${1 + labels.length}`], showErrorMessage: true, errorTitle: 'Category', error: 'Pick a category from the list.' };
+    st.getCell(r, col('Day')).dataValidation = { type: 'whole', operator: 'between', allowBlank: true, formulae: [1, 90], showErrorMessage: true, errorTitle: 'Day', error: 'Day is a number from 1 to 90.' };
+    st.getCell(r, col('Lat')).dataValidation = { type: 'decimal', operator: 'between', allowBlank: true, formulae: [-90, 90], showErrorMessage: true, errorTitle: 'Lat', error: 'Latitude is between -90 and 90.' };
+    st.getCell(r, col('Lon')).dataValidation = { type: 'decimal', operator: 'between', allowBlank: true, formulae: [-180, 180], showErrorMessage: true, errorTitle: 'Lon', error: 'Longitude is between -180 and 180.' };
+  }
+  st.autoFilter = { from: { row: 3, column: 1 }, to: { row: 3 + total, column: n } };
+
+  /* How to fill */
+  help.columns = [16, 52, 34].map(width => ({ width }));
+  xlsxTitleBar(help, 3, 'How to fill the Stops tab', 'Trips');
+  help.getCell('A3').value = 'Works the same in Excel, Numbers and Google Sheets.'; help.getCell('A3').font = xlFont({ color: { argb: XL.mute } });
+  xlsxHeadRow(help, 5, ['Column', 'What to put', 'Example']);
+  const first = days[0].date;
+  const doc = [
+    ['Date', 'The day, as YYYY-MM-DD. Wins over Day when both are filled.', first], ['Day', 'Day number, 1 = first day of the trip.', '1'],
+    ['Time', 'Free text. 9:00, 9am, 9:30pm become 09:00, 09:00, 21:30.', '09:00'], ['Title', 'Stop name. Falls back to Map place when empty.', 'Hotel check-in'],
+    ['Category', 'Pick from the dropdown (see the Lists tab).', labels[0]], ['Map place', 'Name of the pin on the map. An existing place with that name is reused, otherwise a new one is made.', 'Hotel name'],
+    ['Notes', 'Free text. Tags go in square brackets (see the Lists tab).', 'Leave bags if early [Check hours]'], ['Lat, Lon', 'Optional pin for a new Map place, e.g. 35.689487 and 139.691711.', '35.689487 / 139.691711'],
+    ['Day title, Area', 'Optional. Filled in only when the day has none yet.', 'Arrival day / Station area'], ['Hours, Link', 'Optional. Opening hours, and a link starting with http(s).', '11:00-14:00']
+  ];
+  doc.forEach((row, i) => row.forEach((v, c) => { const cell = help.getCell(6 + i, c + 1); cell.value = v; cell.font = xlFont({ bold: c === 0 }); cell.border = xlBorder(); cell.alignment = { vertical: 'top', wrapText: true }; if (i % 2) cell.fill = xlFill(XL.band); }));
+  const steps = ['Fill in the Stops tab (keep the header row as it is).',
+    'Excel / Numbers: save as .xlsx.   Google Sheets: File → Download → Microsoft Excel (.xlsx).',
+    'In Trips: Days → Import → Choose file, and pick the .xlsx. You see a preview before anything is saved.',
+    'Google Sheets users: to start, open sheets.google.com → File → Import → Upload this file → Replace spreadsheet. Dropdowns and colours come with it.'];
+  help.getCell(7 + doc.length, 1).value = 'Steps'; help.getCell(7 + doc.length, 1).font = xlFont({ size: 11, bold: true });
+  steps.forEach((x, i) => { const cell = help.getCell(8 + doc.length + i, 1); cell.value = `${i + 1}. ${x}`; cell.font = xlFont(); });
+  return wb;
+}
+
+// Cell value -> plain text, whatever ExcelJS hands back (rich text, hyperlinks, formula results, dates, numbers).
+function xlsxCellText(v, kind) {
+  if (v == null) return '';
+  if (v instanceof Date) { const p = n => String(n).padStart(2, '0'); return kind === 'Time' ? `${p(v.getUTCHours())}:${p(v.getUTCMinutes())}` : `${v.getUTCFullYear()}-${p(v.getUTCMonth() + 1)}-${p(v.getUTCDate())}`; }
+  if (typeof v === 'number') {
+    if (kind === 'Time' && v >= 0 && v < 1) { const m = Math.round(v * 1440); return `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; }
+    if (kind === 'Date' && v > 20000) return xlsxCellText(new Date(Math.round((v - 25569) * 864e5)), 'Date');   // Excel serial date
+    return String(v);
+  }
+  if (typeof v === 'object') {
+    if (v.richText) return v.richText.map(x => x.text).join('');
+    if ('result' in v) return xlsxCellText(v.result, kind);
+    if (v.text != null) return xlsxCellText(v.text, kind);
+    if (v.error) return '';
+    return '';
+  }
+  return String(v).trim();
+}
+const XLSX_HEAD_ALIAS = { ...CSV_ALIASES, coordinates: 'Coords', type: 'Type', 'location link': 'LocLink' };
+const xlsxHeadOf = v => XLSX_HEAD_ALIAS[String(xlsxCellText(v)).trim().toLowerCase()] || '';
+
+/* .xlsx -> the same grid csvParse() makes (CSV_COLS header + rows), so csvPreview / csvApply work unchanged.
+   Finds the header row (the template has a title bar above it), and also reads this app's own Export Excel layout. */
+async function xlsxReadGrid(ExcelJS, buf) {
+  const wb = new ExcelJS.Workbook(); await wb.xlsx.load(buf);
+  let pick = null;
+  for (const ws of wb.worksheets) {
+    for (let r = 1; r <= Math.min(15, ws.rowCount); r++) {
+      const heads = []; ws.getRow(r).eachCell({ includeEmpty: false }, (c, ci) => { const h = xlsxHeadOf(c.value); if (h) heads[ci] = h; });
+      const known = heads.filter(Boolean).length;
+      if (known >= 3 && (!pick || ws.name === 'Stops' || ws.name === 'Itinerary' && pick.ws.name !== 'Stops')) { pick = { ws, r, heads }; if (ws.name === 'Stops') break; }
+      if (known >= 3) break;
+    }
+    if (pick?.ws.name === 'Stops') break;
+  }
+  if (!pick) throw Error('Header row not recognised. Use the template columns.');
+  const { ws, r: hr, heads } = pick, exportLayout = heads.includes('LocLink');
+  const at = n => heads.indexOf(n), grid = [CSV_COLS.slice()];
+  for (let r = hr + 1; r <= ws.rowCount; r++) {
+    const row = ws.getRow(r), get = n => at(n) > 0 ? xlsxCellText(row.getCell(at(n)).value, n).trim() : '';
+    if (!heads.some((h, ci) => h && xlsxCellText(row.getCell(ci).value).trim())) continue;
+    const o = Object.fromEntries(CSV_COLS.map(c => [c, get(c)]));
+    if (at('Coords') > 0 && !o.Lat && !o.Lon) { const m = /(-?\d+(?:\.\d+)?)\s*[,;]\s*(-?\d+(?:\.\d+)?)/.exec(get('Coords')); if (m) { o.Lat = m[1]; o.Lon = m[2]; } }
+    if (!o.Category && at('Type') > 0) o.Category = { hotel: 'base', meal: 'food' }[get('Type').toLowerCase()] || '';
+    if (exportLayout && !o.Lat && !o.Lon && o['Map place']) { o.Title = o.Title || o['Map place']; o['Map place'] = ''; }   // a stop without a pin was only a title
+    grid.push(CSV_COLS.map(c => o[c]));
+  }
+  if (grid.length < 2) throw Error('The file has no rows.');
+  return grid;
+}
+
 /* ---------- UI ---------- */
 // ExcelJS is ~0.9 MB, so it loads on the first export and is kept in the offline cache (sw.js).
 // Tries the copy shipped with the app first, then two CDNs (a host that skipped the vendor/ folder, a stale cache or a
@@ -193,4 +314,18 @@ async function xlsxExport(tr) {
     await saveFile(`${slug(tr.name)}-itinerary.xlsx`, new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
     toast(`${t('Exported')} ${n} ${t('stops')} · ${tr.days.length} ${t('days')}`);
   } catch (e) { toast(e.message || 'Export failed.'); }
+}
+
+async function xlsxTemplateDownload(tr) {
+  toast('Building Excel…');
+  try {
+    await xlsxLoad();
+    const buf = await xlsxTemplateBuild(window.ExcelJS, tr).xlsx.writeBuffer();
+    await saveFile(`${slug(tr.name)}-itinerary-template.xlsx`, new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  } catch (e) { toast(e.message || 'Export failed.'); }
+}
+async function xlsxReadFile(f) {
+  if (f.size > 8e6) throw Error('File is too large.');
+  await xlsxLoad();
+  return xlsxReadGrid(window.ExcelJS, await f.arrayBuffer());
 }

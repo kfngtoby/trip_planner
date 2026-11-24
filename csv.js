@@ -155,7 +155,7 @@ function csvImportRows(tr, grid) {
 /* ---------- UI ---------- */
 function csvPickFile() {
   return new Promise(res => {
-    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.csv,.tsv,text/csv,text/tab-separated-values,text/plain';
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.xlsx,.csv,.tsv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/tab-separated-values,text/plain';
     inp.onchange = () => res(inp.files[0] || null); inp.oncancel = () => res(null); inp.click();
   });
 }
@@ -208,12 +208,13 @@ function csvImportSheet(tr) {
   const queue = []; let cat = 'sights', pending = null;
   const chip = (attr, val, label, extra = '') => `<button type="button" class="tag" ${attr}="${esc(val)}" ${extra}>${esc(label)}</button>`;
   openSheet({
-    title: t('Import CSV'), submit: null,
+    title: t('Import from file'), submit: null,
     body: `<ol class="csv-steps">
-        <li><b>${t('Download the blank template')}</b><small>${t('Headers and one empty row per trip day. Fill it in with Excel, Numbers or Google Sheets, then save as CSV.')}</small>
-          <button type="button" class="primary" data-csv="blank">${t('Download blank template')}</button></li>
-        <li><b>${t('Import the filled-in file')}</b><small>${t('You see a preview before anything is saved.')}</small>
-          <button type="button" data-csv="import">${t('Choose CSV file')}</button></li></ol>
+        <li><b>${t('Download the blank template')}</b><small>${t('An Excel file with colours, dropdowns and one row per trip day. Opens in Excel, Numbers and Google Sheets (File → Import → Upload) with the formatting kept.')}</small>
+          <button type="button" class="primary" data-csv="xlsx-blank">${t('Download Excel / Sheets template')}</button>
+          <button type="button" class="text-btn" data-csv="blank">${t('Plain CSV template instead')}</button></li>
+        <li><b>${t('Import the filled-in file')}</b><small>${t('Choose the .xlsx (in Google Sheets: File → Download → Microsoft Excel) or a .csv. You see a preview before anything is saved.')}</small>
+          <button type="button" data-csv="import">${t('Choose file')}</button></li></ol>
       <p class="field-hint"><button type="button" class="text-btn" data-csv="sample">${t('Download sample CSV')}</button> ${t('shows filled-in example rows.')}</p>
       <p class="field-hint">${t('Columns')}: ${CSV_COLS.join(' · ')}. ${t('Export and import use the same columns, so an exported file can be edited and imported again. Importing only adds; stops already in the trip are skipped. You see a preview before anything is saved.')}</p>
       <div id="csv-preview"></div>
@@ -254,11 +255,15 @@ function csvImportSheet(tr) {
         else switch (b.dataset.csv) {
           case 'import': {
             const f = await csvPickFile(); if (!f) break;
-            try { const { text, fallback } = await csvReadFile(f), grid = csvParse(text); if (grid.length < 2) throw Error('The file has no rows.'); show(grid, fallback); }
+            try {
+              if (/\.xlsx$/i.test(f.name)) { g('csv-preview').innerHTML = `<p class="field-hint">${t('Reading Excel…')}</p>`; show(await xlsxReadFile(f), false); break; }
+              const { text, fallback } = await csvReadFile(f), grid = csvParse(text); if (grid.length < 2) throw Error('The file has no rows.'); show(grid, fallback);
+            }
             catch (err) { pending = null; g('csv-preview').innerHTML = `<p class="csv-warn">${esc(t(err.message))}</p>`; }
             break;
           }
           case 'confirm': try { csvApply(tr, pending); } catch (err) { toast(err.message); } break;
+          case 'xlsx-blank': xlsxTemplateDownload(tr); break;
           case 'blank': download(csvFilename(tr, 'template'), csvText(csvBlankRows(tr)), 'text/csv;charset=utf-8'); break;
           case 'sample': download(csvFilename(tr, 'sample'), csvText(csvTemplateRows(tr)), 'text/csv;charset=utf-8'); break;
           case 'add': {

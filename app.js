@@ -210,6 +210,11 @@ function reorderKeepingTimes(items, from, to) {
   const times = items.map(x => x.time), [it] = items.splice(from, 1); items.splice(to, 0, it);
   items.forEach((x, k) => { x.time = times[k]; });
 }
+// Dragging swaps two stops: the dragged one and the one it lands on trade places. Times stay with their slots.
+function swapKeepingTimes(items, a, b) {
+  const times = items.map(x => x.time); [items[a], items[b]] = [items[b], items[a]];
+  items.forEach((x, k) => { x.time = times[k]; });
+}
 function moveItem(dayId, itemId, dir) {
   const d = trip().days.find(x => x.id === dayId), i = d?.items.findIndex(x => x.id === itemId);
   if (i < 0 || i + dir < 0 || i + dir >= d.items.length) return;
@@ -233,7 +238,7 @@ function renderDaysTab() {
         <button id="expand-all" class="text-btn" ${allOpen ? 'disabled' : ''}>${t('Expand all')}</button>
         <button id="collapse-all" class="text-btn" ${open.size ? '' : 'disabled'}>${t('Collapse all')}</button>
       </span>
-      <span class="toolbar-group">${todayDay(tr) ? `<button id="jump-today" class="text-btn">${t('Today')}</button>` : ''}<button id="csv-import" class="text-btn">${t('Import CSV')}</button><button id="csv-export" class="text-btn" ${tr.days.length ? '' : 'disabled'}>${t('Export CSV')}</button><button id="xlsx-export" class="text-btn" ${tr.days.length ? '' : 'disabled'}>${t('Export Excel')}</button><button id="add-day" class="text-btn">+ ${t('Add day')}</button></span>
+      <span class="toolbar-group">${todayDay(tr) ? `<button id="jump-today" class="text-btn">${t('Today')}</button>` : ''}<button id="csv-import" class="text-btn">${t('Import / template')}</button><button id="csv-export" class="text-btn" ${tr.days.length ? '' : 'disabled'}>${t('Export CSV')}</button><button id="xlsx-export" class="text-btn" ${tr.days.length ? '' : 'disabled'}>${t('Export Excel')}</button><button id="add-day" class="text-btn">+ ${t('Add day')}</button></span>
     </div>
     ${tr.days.length ? tr.days.map((d, i) => dayCard(tr, d, i, open.has(d.id))).join('') : `<p class="empty">No stops yet</p>`}`;
   $('#expand-all').onclick = () => { tr.days.forEach(d => open.add(d.id)); renderDaysTab(); };
@@ -493,8 +498,8 @@ function wireSwipe() {
 }
 
 /* ================= DRAG TO REORDER =================
-   Days tab → Reorder: hold the ⠿ handle and drag a stop up or down within its day; the others slide out of the way and
-   the order is saved on release. Arrow Up / Down on a focused handle does the same for keyboard users. */
+   Days tab → Reorder: hold the ⠿ handle and drag a stop onto another stop in its day; the two swap places (the one underneath glides
+   into the dragged stop's old slot) and the order is saved on release. Arrow Up / Down on a focused handle does the same for keyboard users. */
 function wireDrag() {
   let g = null;
   const mv = (li, v) => li.querySelectorAll('.stop-main,.reorder').forEach(el => { el.style.transform = v; }); // the time column stays put
@@ -507,14 +512,27 @@ function wireDrag() {
   // iOS: while a stop is held, the page must not scroll or rubber-band under the finger
   document.addEventListener('touchmove', e => { if (g) e.preventDefault(); }, { passive: false });
   const haptic = () => { try { navigator.vibrate?.(8); } catch {} };
+  // Where each stop's details sit if stops `a` and `b` trade places (slots keep their own gaps, so unequal heights still line up).
+  const swapShifts = (g, a, b) => {
+    const order = g.lis.map((_, i) => i); [order[a], order[b]] = [order[b], order[a]];
+    const tops = []; let y = g.rects[0].top;
+    order.forEach((it, k) => { tops[it] = y; y += g.rects[it].h + g.gaps[k]; });
+    return g.lis.map((_, i) => tops[i] - g.rects[i].top);
+  };
   const update = () => {
     const dy = (g.y - g.y0) + ((g.sc ? g.sc.scrollTop : 0) - g.s0);
     mv(g.li, `translateY(${dy}px) scale(1.03)`);
-    const c = g.rects[g.from].top + g.rects[g.from].h / 2 + dy; let to = g.from;
-    g.rects.forEach((r, i) => { const m = r.top + r.h / 2; if (i < g.from && c < m) to = Math.min(to, i); if (i > g.from && c > m) to = Math.max(to, i); });
-    if (to !== g.to) haptic();
-    g.to = to;
-    g.lis.forEach((x, i) => { if (x !== g.li) mv(x, to > g.from && i > g.from && i <= to ? `translateY(${-g.shift}px)` : to < g.from && i >= to && i < g.from ? `translateY(${g.shift}px)` : ''); });
+    const c = g.rects[g.from].top + g.rects[g.from].h / 2 + dy; let to = g.from, best = Infinity;
+    g.rects.forEach((r, i) => { const dist = Math.abs(c - (r.top + r.h / 2)); if (dist < best) { best = dist; to = i; } });  // the stop under the dragged one
+    if (to !== g.to) {
+      haptic(); g.to = to;
+      const sh = to === g.from ? null : swapShifts(g, g.from, to);
+      g.lis.forEach((x, i) => {
+        if (x === g.li) return;
+        x.classList.toggle('swap-target', !!sh && i === to);           // the stop being replaced: it glides to the dragged stop's old slot
+        mv(x, sh && Math.abs(sh[i]) > 0.5 ? `translateY(${sh[i]}px)` : '');  // stops in between only move when heights differ
+      });
+    }
   };
   const tick = () => {
     if (!g) return;
@@ -528,8 +546,8 @@ function wireDrag() {
     const li = h.closest('li.stop'), ol = li && li.parentElement; if (!li || !ol) return;
     const lis = [...ol.children].filter(x => x.classList.contains('stop')), from = lis.indexOf(li), sc = $('#view'), s0 = sc ? sc.scrollTop : 0;
     const rects = lis.map(x => { const r = x.getBoundingClientRect(); return { top: r.top + s0, h: r.height }; });
-    const gap = lis.length < 2 ? 0 : from < lis.length - 1 ? rects[from + 1].top - rects[from].top - rects[from].h : rects[from].top - rects[from - 1].top - rects[from - 1].h;
-    g = { id: e.pointerId, h, li, ol, lis, rects, from, to: from, y0: e.clientY, y: e.clientY, s0, sc, shift: rects[from].h + gap, raf: 0 };
+    const gaps = rects.map((r, i) => i < rects.length - 1 ? rects[i + 1].top - r.top - r.h : 0);   // space after each slot (travel legs, margins)
+    g = { id: e.pointerId, h, li, ol, lis, rects, gaps, from, to: from, y0: e.clientY, y: e.clientY, s0, sc, raf: 0 };
     try { h.setPointerCapture(e.pointerId); } catch {}
     li.classList.add('dragging'); ol.classList.add('drag-on'); haptic(); g.raf = requestAnimationFrame(tick);
   });
@@ -540,14 +558,14 @@ function wireDrag() {
     const cancel = e.type === 'pointercancel' || to === from;
     if (cancel) {                                                                     // glide back into place
       li.classList.add('settling'); mv(li, '');
-      lis.forEach(x => { if (x !== li) mv(x, ''); });
+      lis.forEach(x => { if (x !== li) { mv(x, ''); x.classList.remove('swap-target'); } });
       setTimeout(() => { li.classList.remove('dragging', 'settling'); ol.classList.remove('drag-on'); }, 220);
       return;
     }
     const grab = li.querySelector('.stop-main')?.getBoundingClientRect().top;          // where the stop is on screen now
-    li.classList.remove('dragging'); ol.classList.remove('drag-on'); lis.forEach(x => mv(x, ''));
+    li.classList.remove('dragging'); ol.classList.remove('drag-on'); lis.forEach(x => { mv(x, ''); x.classList.remove('swap-target'); });
     const [dId, iId] = h.dataset.drag.split('|'), d = trip().days.find(x => x.id === dId); if (!d) return;
-    const top = sc ? sc.scrollTop : 0; reorderKeepingTimes(d.items, from, to);
+    const top = sc ? sc.scrollTop : 0; swapKeepingTimes(d.items, from, to);
     saveDb(); renderDaysTab(); if (sc) sc.scrollTop = top;
     // FLIP: start the moved stop where the finger left it and let it settle into its new slot
     const nh = document.querySelector(`[data-drag="${h.dataset.drag}"]`), nli = nh?.closest('li.stop');
