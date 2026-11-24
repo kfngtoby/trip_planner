@@ -17,27 +17,32 @@ Data is stored on the device (`localStorage`, key `trip-companion-v3`). A differ
 **My trips** → tap a trip (tap the name to rename) → **Overview** (map) · **Days** · **Expenses**.
 
 - **Overview**: category chips filter the map and the grouped details under Search. Under the map: All days · Week 1 · Week 2 … then a slider for one day. Map is **Light** (muted OpenStreetMap) or **Normal** (full colour); the choice is remembered. Numbered route mode: tap pins in order, pick Drive / Walk / Bike, and open the route in Google Maps (max 11 points).
-- **Days**: expand a day to edit stops. The **CSV** button opens import, export and a quick-entry template (see below). Tap a stop to edit, swipe right to remove (Undo is offered). Delete day is on each day card. Find food / Find shopping sits under the toolbar and inside each day.
+- **Days**: expand a day to edit stops. The toolbar has separate **Import CSV** and **Export CSV** buttons (see below). Tap a stop to edit, swipe right to remove (Undo is offered). Delete day is on each day card. Find food / Find shopping sits under the toolbar and inside each day.
 - **Expenses**: split costs, members, settle up, CSV export. Each expense has a bill currency; a live rate is fetched (frankfurter.dev), editable, and cached for offline. The amount is stored in the trip currency with the original amount and rate kept. Receipt scan (OCR, 31 languages) detects language and currency.
 
 ### Days CSV (`csv.js`)
-**Days → CSV** opens one sheet with Import, Export, a blank template and a quick-entry form. Template, export and import share one layout:
+Two toolbar buttons on the Days tab. **Export CSV** downloads the whole itinerary in one tap. **Import CSV** opens a sheet to choose a file, download a sample file, or use quick entry. Sample, export and import share one layout, so an exported file can be edited and imported again:
 
 | Column | Meaning |
 |---|---|
 | Date | `YYYY-MM-DD` (`YYYY/M/D` also works). Wins over Day when both are filled |
-| Time | Free text, e.g. `09:00` |
+| Time | Free text. `9:00`, `9am`, `9:30pm` are normalised to `09:00`, `09:00`, `21:30` |
 | Category | `base`, `sights`, `food`, `fashion`, `shopping`, `pokemon`, `slowpoke` (the label also works) |
 | Day | Day number, 1 = first day |
 | Title | Stop name (falls back to Map place when empty) |
 | Map place | Name of the pin. An existing place with that name is reused, otherwise a new one is created |
 | Notes | Free text. Predefined tags are written as `[Book ahead]`, `[Cash only]`, `[Check hours]`, `[Closed Mon]`, `[Queue early]`, `[Photo spot]`, `[Rain plan]`, `[Tax-free]` |
-| Lat, Lon | Optional; give a new place a map pin |
+| Lat, Lon | Optional; give a new place a map pin (must be a valid coordinate) |
+| Day title, Area | Optional; fill a day's title / area when it has none yet |
+| Hours, Link | Optional; fill a place's opening hours / `http(s)` link when it has none yet |
 
-- **Quick entry** has tap-to-fill chips for time (Morning, Lunch, Afternoon, Dinner, Evening), category and note tags. Press *Add row*, then download the rows as CSV or add them to the trip.
-- **Export** writes the same columns (UTF-8 with BOM, opens in Excel). A day with no stops becomes a row with only Date and Day.
-- **Import** only adds. A stop with the same day, time, title and place is skipped, so re-importing an export changes nothing. New dates create new days. Unknown categories fall back to `sights` with a warning. Undo is offered.
-- Not in the CSV: day titles and areas, place hours and links, expenses. Use *Export trip backup* for a full copy.
+- **Import** is preview-first: the chosen file is checked on a copy of the trip and every row is listed as *New*, *Already there*, *New day* or *Error*, with counts. Nothing is saved until you press *Import N stops*; Undo is offered afterwards.
+- Import only adds. A stop with the same day, time, title and place as one already in the trip is skipped, so re-importing an export changes nothing; two identical lines inside one file both come in. New dates create new days. Existing day titles, areas, place hours and links are never overwritten.
+- Bad rows (invalid date, Day outside 1-90) are reported and skipped; unknown categories fall back to `sights` and invalid coordinates add no pin, both with a warning.
+- Files are read as UTF-8; a non-UTF-8 file (e.g. Excel Big5) is read as Big5 with a warning. Comma, semicolon and tab separators are detected.
+- **Export** writes the same columns (UTF-8 with BOM, opens in Excel). A day with no stops becomes a row with only Date, Day, Day title and Area. Text starting with `=`, `+`, `-` or `@` gets a leading `'` so spreadsheets do not run it as a formula; import strips it again.
+- **Quick entry** (inside the Import sheet) has tap-to-fill chips for time, category and note tags. Press *Add row*, then download the rows or preview and add them to the trip.
+- Not in the CSV: expenses, place photos and other place details. Use *Export trip backup* for a full copy.
 
 ### Find food (Tabelog search builder)
 Nothing is fetched from Tabelog and no server is needed. **Find food** opens a small form that builds the search for you:

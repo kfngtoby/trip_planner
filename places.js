@@ -4,6 +4,7 @@
 let lmap = null, markers = new Map(), mapDay = 'all', placeQuery = '', pendingFocus = null, pickCallback = null, activeSpotId = null;
 let routeMode = false, routeSeq = [], routeTravel = 'driving'; // numbered-route tool: ids of places in the order they were tapped
 const activeSubs = new Set(); // fashion styles switched on (empty = no style filter)
+let lastWeek = 0; // the week shown on the week button (arrow cycles it)
 const activeCats = new Set(); // categories switched on in the Overview legend (empty = show every category)
 
 // store.js has a text helper called L(), which hides Leaflet's global L in every later script. That broke the map in v25.
@@ -36,11 +37,12 @@ function renderLegend() {
   const tr = trip(), el = $('#cat-legend'); if (!el) return;
   const base = filteredSpots(tr, true), present = Object.keys(CATS).filter(k => base.some(s => s.cat === k));
   [...activeCats].forEach(k => { if (!present.includes(k)) activeCats.delete(k); });
-  el.innerHTML = present.map(k => {
+  const findBtn = `<button type="button" class="cat-act find-nearby" data-find="shop"><span aria-hidden="true">📍</span> ${discoveryLabel('Find Nearby', '搜尋附近')}</button>`;
+  el.innerHTML = findBtn + present.map(k => {
     const on = activeCats.has(k);
     return `<button type="button" class="cat-chip" data-cat="${k}" aria-pressed="${on}" style="--c:${CATS[k].color}">
       <b class="cat-badge">${catIcon(k, 14)}</b><span class="cat-name">${esc(CATS[k].label)}</span><small>${base.filter(s => s.cat === k).length}</small></button>`;
-  }).join('') + `<button type="button" class="cat-act" data-find="shop">${discoveryLabel('Find Nearby', '搜尋附近')}</button>${present.length ? `<button type="button" class="cat-act ghost" data-cat-none ${activeCats.size ? '' : 'disabled'}>${discoveryLabel('Clear', '清除')}</button>` : ''}`;
+  }).join('') + `${present.length ? `<button type="button" class="cat-act ghost" data-cat-none ${activeCats.size ? '' : 'disabled'}>${discoveryLabel('Clear', '清除')}</button>` : ''}`;
 }
 
 const spotDayTags = (tr, s) => s.days.map(did => { const i = tr.days.findIndex(d => d.id === did); return i < 0 ? '' : `<span class="tag" style="--c:${dayColor(tr, did)}">Day ${i + 1}</span>`; }).join('');
@@ -123,8 +125,9 @@ function renderMapTab() {
   $('#place-search').oninput = e => { placeQuery = e.target.value; refreshPlaces(); };
   renderWeekBar();
   $('#week-bar').onclick = e => {
-    const b = e.target.closest('[data-week],[data-pos]'); if (!b) return;
-    if (b.dataset.week) mapDay = b.dataset.week;
+    const b = e.target.closest('[data-week],[data-pos],[data-next]'); if (!b) return;
+    if (b.dataset.next) { const n = weekCount(tr), cur = activeWeek(tr); mapDay = 'w' + (cur < 0 ? Math.min(lastWeek, n - 1) : (cur + 1) % n); }
+    else if (b.dataset.week) mapDay = b.dataset.week;
     else { const w = activeWeek(tr), pos = +b.dataset.pos; mapDay = pos ? weekDays(tr, w)[pos - 1].id : 'w' + w; }
     reco.showAll = false; renderWeekBar(); refreshPlaces(true);
   };
@@ -208,10 +211,11 @@ function renderWeekBar() {
     if (zh) return `${fmtDate(a, { day: 'numeric', month: 'numeric' })}–${fmtDate(z, { day: 'numeric', month: 'numeric' })}`;
     return a.slice(0, 7) === z.slice(0, 7) ? `${+a.slice(8)}–${fmtDate(z, { day: 'numeric', month: 'short' })}` : `${fmtDate(a, { day: 'numeric', month: 'short' })}–${fmtDate(z, { day: 'numeric', month: 'short' })}`;
   };
-  const tabs = [`<button type="button" data-week="all" aria-pressed="${mapDay === 'all'}">${t('All days')}</button>`,
-    ...Array.from({ length: n }, (_, i) => { const ds = weekDays(tr, i), hasToday = ds.some(d => d.date === today);
-      return `<button type="button" data-week="w${i}" aria-pressed="${w === i}"><b>${zh ? `第 ${i + 1} 週` : `Week ${i + 1}`}</b><small>${esc(range(ds))}</small>${hasToday ? '<i class="today-dot" aria-label="Today"></i>' : ''}</button>`; }),
-    tr.spots.some(s => !s.days.length) ? `<button type="button" data-week="none" aria-pressed="${mapDay === 'none'}">${t('Unassigned day')}</button>` : ''].join('');
+  if (w >= 0) lastWeek = w;
+  const cw = Math.min(lastWeek, n - 1), cds = weekDays(tr, cw), cToday = cds.some(d => d.date === today);
+  const tabs = `<button type="button" data-week="all" aria-pressed="${mapDay === 'all'}">${t('All days')}</button>
+    <button type="button" data-week="w${cw}" aria-pressed="${w === cw}"><b>${zh ? `第 ${cw + 1} 週` : `Week ${cw + 1}`}</b><small>${esc(range(cds))}</small>${cToday ? '<i class="today-dot" aria-label="Today"></i>' : ''}</button>
+    ${n > 1 ? `<button type="button" class="week-next" data-next="1" aria-label="${zh ? '下一週' : 'Next week'}">→</button>` : ''}`;
   let slider = '';
   if (w >= 0) {
     const ds = weekDays(tr, w), pos = /^w\d+$/.test(mapDay) ? 0 : ds.findIndex(d => d.id === mapDay) + 1;

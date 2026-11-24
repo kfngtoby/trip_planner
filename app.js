@@ -255,7 +255,7 @@ function renderDaysTab() {
         <button id="expand-all" class="text-btn" ${allOpen ? 'disabled' : ''}>${t('Expand all')}</button>
         <button id="collapse-all" class="text-btn" ${open.size ? '' : 'disabled'}>${t('Collapse all')}</button>
       </span>
-      <span class="toolbar-group">${todayDay(tr) ? `<button id="jump-today" class="text-btn">${t('Today')}</button>` : ''}<button id="csv-open" class="text-btn">CSV</button><button id="add-day" class="text-btn">+ ${t('Add day')}</button></span>
+      <span class="toolbar-group">${todayDay(tr) ? `<button id="jump-today" class="text-btn">${t('Today')}</button>` : ''}<button id="csv-import" class="text-btn">${t('Import CSV')}</button><button id="csv-export" class="text-btn" ${tr.days.length ? '' : 'disabled'}>${t('Export CSV')}</button><button id="add-day" class="text-btn">+ ${t('Add day')}</button></span>
     </div>
     ${(() => { const qd = todayDay(tr) || tr.days.find(d => open.has(d.id)) || tr.days[0]; return qd && typeof discoveryButtons === 'function' ? `<div class="discover-quick"><small class="user-text">${discoveryLabel('Near', '附近')} · Day ${tr.days.indexOf(qd) + 1}${qd.place ? ' · ' + esc(qd.place) : ''}</small>${discoveryButtons(qd)}</div>` : ''; })()}
     ${tr.days.some(d => d.items.length) ? `<p class="swipe-hint">${t('Tap a stop to edit · swipe right to remove')}</p>` : ''}
@@ -264,7 +264,8 @@ function renderDaysTab() {
   $('#expand-all').onclick = () => { tr.days.forEach(d => open.add(d.id)); renderDaysTab(); };
   $('#collapse-all').onclick = () => { open.clear(); renderDaysTab(); $('#view').scrollTo({ top: 0 }); };
   $('#jump-today')?.addEventListener('click', () => { const td = todayDay(tr); open.add(td.id); renderDaysTab(); document.getElementById('day-' + td.id)?.scrollIntoView({ block: 'start' }); });
-  $('#csv-open').onclick = () => csvSheet(tr);
+  $('#csv-import').onclick = () => csvImportSheet(tr);
+  $('#csv-export').onclick = () => csvExport(tr);
   $('#add-day').onclick = () => {
     const last = tr.days[tr.days.length - 1];
     const d = { id: uid('d'), date: last ? addDays(last.date, 1) : todayIso(), title: '', place: '', items: [] };

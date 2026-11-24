@@ -106,7 +106,7 @@ main.home{padding:12px 16px calc(110px + var(--safe-b));max-width:720px;margin:a
 .chev-r{color:var(--muted);font-size:22px}
 
 /* ---------- days tab ---------- */
-.toolbar{display:flex;justify-content:space-between;padding:8px 10px}
+.toolbar{display:flex;flex-wrap:wrap;justify-content:space-between;padding:8px 10px}
 .day{margin:0 12px 10px;background:var(--card);border:1px solid var(--line);border-left:6px solid var(--c);border-radius:var(--r-md);overflow:hidden}
 .day-head{width:100%;justify-content:flex-start;gap:12px;padding:12px 12px 12px 12px;min-height:68px;border:0;border-radius:0;background:none;text-align:left}
 .day-num{display:grid;flex:none;width:68px;color:var(--c);font:700 15px/1.2 var(--display)}
@@ -375,7 +375,7 @@ label.full{display:block;margin-bottom:10px}
 .reorder button{min-height:34px;min-width:38px;padding:0;border-radius:10px}
 .reorder .stop-del-btn{color:#c0392b}
 .stop{align-items:flex-start}
-.toolbar-group{display:inline-flex;gap:4px;align-items:center}
+.toolbar-group{display:inline-flex;flex-wrap:wrap;gap:4px;align-items:center}
 
 .stop-time small{display:block;line-height:1.25}
 .today-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#2f8a5b;margin-left:4px;vertical-align:middle}
@@ -595,6 +595,13 @@ label.check{display:flex;gap:8px;align-items:flex-start}
 .tag[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#fff}
 .csv-queue{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:4px}
 .csv-queue li{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:6px 8px;border-radius:var(--r-sm);background:var(--soft)}
+.csv-quick{margin-top:14px}.csv-quick summary{font:700 15px var(--display);cursor:pointer;padding:6px 0}
+.csv-sum{margin:4px 0 8px}.csv-warn{color:#b3261e}
+.csv-rows{max-height:40vh;overflow:auto}
+.csv-row{grid-template-columns:auto 1fr auto!important}
+.csv-st{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--soft);color:var(--muted);white-space:nowrap}
+.csv-row.is-new .csv-st,.csv-row.is-day .csv-st{background:color-mix(in srgb,#2e7d32 16%,var(--card));color:#2e7d32}
+.csv-row.is-error{background:color-mix(in srgb,#b3261e 10%,var(--card))}.csv-row.is-error .csv-st{background:#b3261e;color:#fff}
 .q-t{font-size:12px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
 .q-m{display:grid;min-width:0}.q-m small{color:var(--muted);font-size:12px;overflow-wrap:anywhere}
 
@@ -611,7 +618,6 @@ label.check{display:flex;gap:8px;align-items:flex-start}
 
 /* Categories: small pills in one scrolling row */
 .cat-toggle{display:flex;flex-wrap:nowrap;gap:6px;padding:8px 12px 2px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;overscroll-behavior-x:contain}
-.cat-toggle::-webkit-scrollbar{display:none}
 .cat-chip{flex:none;min-height:36px;gap:6px;padding:0 12px 0 5px;border-width:1px;border-radius:999px;font-size:13px;font-weight:600;white-space:nowrap;touch-action:manipulation}
 .cat-chip .cat-badge{width:24px;height:24px;box-shadow:none}
 .cat-chip small{font-size:12px}
@@ -633,3 +639,15 @@ dialog#sheet{padding-bottom:var(--safe-b)}
 .place-list,.view-days,.week-tabs,.disc-chips{-webkit-overflow-scrolling:touch}
 .discover-quick small{display:none}
 .discover-buttons button{min-height:40px}
+
+
+/* v38: visible scroll bars (directions, categories, days), Find Nearby first + highlighted, week arrow */
+.rp-chips,.cat-toggle,.week-tabs{scrollbar-width:thin;scrollbar-color:#8f99a3 var(--soft);padding-bottom:6px}
+.rp-chips::-webkit-scrollbar,.cat-toggle::-webkit-scrollbar,.week-tabs::-webkit-scrollbar{display:block;height:8px}
+.rp-chips::-webkit-scrollbar-track,.cat-toggle::-webkit-scrollbar-track,.week-tabs::-webkit-scrollbar-track{background:var(--soft);border-radius:999px}
+.rp-chips::-webkit-scrollbar-thumb,.cat-toggle::-webkit-scrollbar-thumb,.week-tabs::-webkit-scrollbar-thumb{background:#8f99a3;border-radius:999px;border:1px solid var(--soft)}
+.cat-toggle{padding-bottom:8px}
+.cat-act.find-nearby{position:sticky;left:0;z-index:2;display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 16px;background:var(--accent);border:2px solid var(--accent);color:#fff;font-weight:700;font-size:14px;box-shadow:0 2px 8px color-mix(in srgb,var(--accent) 55%,transparent),0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
+.cat-act.find-nearby:active{transform:scale(.97)}
+.week-tabs button[data-week=all]{flex:0 0 auto}
+.week-tabs .week-next{flex:0 0 auto;min-width:48px;padding:4px 14px;font-size:22px;font-weight:700;background:var(--soft)}
