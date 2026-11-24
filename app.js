@@ -238,14 +238,14 @@ function renderDaysTab() {
         <button id="expand-all" class="text-btn" ${allOpen ? 'disabled' : ''}>${t('Expand all')}</button>
         <button id="collapse-all" class="text-btn" ${open.size ? '' : 'disabled'}>${t('Collapse all')}</button>
       </span>
-      <span class="toolbar-group">${todayDay(tr) ? `<button id="jump-today" class="text-btn">${t('Today')}</button>` : ''}<button id="csv-import" class="text-btn">${t('Import / template')}</button><button id="csv-export" class="text-btn" ${tr.days.length ? '' : 'disabled'}>${t('Export CSV')}</button><button id="xlsx-export" class="text-btn" ${tr.days.length ? '' : 'disabled'}>${t('Export Excel')}</button><button id="add-day" class="text-btn">+ ${t('Add day')}</button></span>
+      <span class="toolbar-group">${todayDay(tr) ? `<button id="jump-today" class="text-btn">${t('Today')}</button>` : ''}<button id="csv-import" class="text-btn">${t('Import / template')}</button><button id="xlsx-export" class="text-btn" ${tr.days.length ? '' : 'disabled'}>${t('Export Excel')}</button></span>
     </div>
-    ${tr.days.length ? tr.days.map((d, i) => dayCard(tr, d, i, open.has(d.id))).join('') : `<p class="empty">No stops yet</p>`}`;
+    ${tr.days.length ? tr.days.map((d, i) => dayCard(tr, d, i, open.has(d.id))).join('') : `<p class="empty">No stops yet</p>`}
+    <div class="add-day-row"><button id="add-day" class="text-btn">+ ${t('Add day')}</button></div>`;
   $('#expand-all').onclick = () => { tr.days.forEach(d => open.add(d.id)); renderDaysTab(); };
   $('#collapse-all').onclick = () => { open.clear(); renderDaysTab(); $('#view').scrollTo({ top: 0 }); };
   $('#jump-today')?.addEventListener('click', () => { const td = todayDay(tr); open.add(td.id); renderDaysTab(); document.getElementById('day-' + td.id)?.scrollIntoView({ block: 'start' }); });
   $('#csv-import').onclick = () => csvImportSheet(tr);
-  $('#csv-export').onclick = () => csvExport(tr);
   $('#xlsx-export').onclick = () => xlsxExport(tr);
   $('#add-day').onclick = () => {
     const last = tr.days[tr.days.length - 1];

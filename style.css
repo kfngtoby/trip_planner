@@ -724,3 +724,13 @@ dialog#sheet{padding-bottom:var(--safe-b)}
 /* v43: drag swaps two stops; the stop being replaced glides to the other slot and is tinted while it waits */
 .stops.drag-on .stop:not(.dragging) .stop-main,.stops.drag-on .stop:not(.dragging) .reorder{transition:transform .28s cubic-bezier(.2,.8,.2,1),background .2s ease,box-shadow .2s ease}
 .stops.drag-on .stop.swap-target .stop-main{background:color-mix(in srgb,var(--accent) 12%,var(--card));box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 45%,transparent);border-radius:8px}
+
+/* v44: the stop being replaced must stay visible while it glides into the dragged stop's old slot */
+.stops.drag-on .stop{overflow:visible}
+.stops.drag-on .stop.swap-target{z-index:5}
+.stops.drag-on .stop:not(.dragging):not(.swap-target){z-index:1}
+.stops.drag-on .stop.swap-target .stop-in{background:transparent}
+
+/* v45: Add day sits below the last day block */
+.add-day-row{display:flex;justify-content:center;padding:14px 0 24px}
+.add-day-row .text-btn{min-width:160px}
