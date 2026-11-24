@@ -76,8 +76,6 @@ const csvTemplateRows = tr => {
     [d2, '15:00', 'sights', 2, 'Walk around the old town', '', '[Photo spot]', '', '', 'Old town', '', '', ''],
     [addDays(d2, 1), '', '', 3, '', '', '', '', '', 'Free day', '', '', '']];
 };
-// Blank template: the header row and one empty row per trip day with only Date and Day filled in, ready to type into.
-const csvBlankRows = tr => (tr.days.length ? tr.days : [{ date: todayIso() }]).map((d, i) => [d.date, '', '', i + 1, '', '', '', '', '', '', '', '', '']);
 const csvFilename = (tr, kind) => `${slug(tr.name)}-itinerary${kind ? '-' + kind : ''}.csv`;
 
 /* ---------- rows -> trip ---------- */
@@ -203,56 +201,29 @@ function csvPreviewHtml(res, fallback) {
       <button type="button" data-csv="import">${t('Choose another file')}</button></div>`;
 }
 
-// Import sheet: pick a file, review the preview, confirm. Also holds the sample file and a quick-entry form that builds rows.
+// Import sheet: download the Excel template (or the filled-in sample), fill it in, pick the file, review the preview, confirm.
 function csvImportSheet(tr) {
-  const queue = []; let cat = 'sights', pending = null;
-  const chip = (attr, val, label, extra = '') => `<button type="button" class="tag" ${attr}="${esc(val)}" ${extra}>${esc(label)}</button>`;
+  let pending = null;
   openSheet({
     title: t('Import from file'), submit: null,
     body: `<ol class="csv-steps">
         <li><b>${t('Download the blank template')}</b><small>${t('An Excel file with colours, dropdowns and one row per trip day. Opens in Excel, Numbers and Google Sheets (File → Import → Upload) with the formatting kept.')}</small>
-          <button type="button" class="primary" data-csv="xlsx-blank">${t('Download Excel / Sheets template')}</button>
-          <button type="button" class="text-btn" data-csv="blank">${t('Plain CSV template instead')}</button></li>
+          <small>${t('Quick entry is built in: pick Time, Category, Map place and up to three Tags from dropdowns.')}</small>
+          <button type="button" class="primary" data-csv="xlsx-blank">${t('Download Excel / Sheets template')}</button></li>
         <li><b>${t('Import the filled-in file')}</b><small>${t('Choose the .xlsx (in Google Sheets: File → Download → Microsoft Excel) or a .csv. You see a preview before anything is saved.')}</small>
           <button type="button" data-csv="import">${t('Choose file')}</button></li></ol>
-      <p class="field-hint"><button type="button" class="text-btn" data-csv="sample">${t('Download sample CSV')}</button> ${t('shows filled-in example rows.')}</p>
+      <p class="field-hint"><button type="button" class="text-btn" data-csv="xlsx-sample">${t('Download sample Excel / Sheets template')}</button> ${t('shows filled-in example rows.')}</p>
       <p class="field-hint">${t('Columns')}: ${CSV_COLS.join(' · ')}. ${t('Export and import use the same columns, so an exported file can be edited and imported again. Importing only adds; stops already in the trip are skipped. You see a preview before anything is saved.')}</p>
-      <div id="csv-preview"></div>
-      <details class="csv-quick"><summary>${t('Quick entry')}</summary>
-      <p class="field-hint">${t('Fill in a stop, tap tags, press Add row. Download the rows as a CSV, or add them to this trip now.')}</p>
-      <label>${t('Day')}<select id="q-day">${tr.days.map((d, i) => `<option value="${i}">Day ${i + 1} · ${esc(fmtDate(d.date))}</option>`).join('')}<option value="new">+ ${t('New day after the last')}</option></select></label>
-      <label>${t('Time')}<input id="q-time" maxlength="40" placeholder="09:00"></label>
-      <div class="tags">${CSV_TIME_TAGS.map(([n, v]) => chip('data-time', v, `${n} ${v}`)).join('')}</div>
-      <label>${t('Title')}<input id="q-title" maxlength="160"></label>
-      <div class="tags" role="group" aria-label="${t('Category')}">${Object.keys(CATS).map(k => chip('data-cat', k, CATS[k].label, `aria-pressed="${k === cat}"`)).join('')}</div>
-      <label>${t('Map place')}<input id="q-place" list="q-places" maxlength="160" placeholder="${esc(t('Type, or pick a saved place'))}"></label>
-      <datalist id="q-places">${tr.spots.map(s => `<option value="${esc(s.name)}"></option>`).join('')}</datalist>
-      <label>${t('Notes')}<textarea id="q-note" rows="2" maxlength="1500"></textarea></label>
-      <div class="tags">${CSV_NOTE_TAGS.map(n => chip('data-note', n, n)).join('')}</div>
-      <button type="button" class="primary wide" data-csv="add">${t('Add row')}</button>
-      <ol class="csv-queue" id="q-list"></ol>
-      <div class="csv-top" id="q-actions" hidden>
-        <button type="button" data-csv="q-download">${t('Download rows')}</button>
-        <button type="button" class="primary" data-csv="q-import">${t('Preview rows')}</button>
-        <button type="button" class="text-btn" data-csv="q-clear">${t('Clear')}</button></div></details>`,
+      <div id="csv-preview"></div>`,
     onOpen: root => {
       const g = id => root.querySelector('#' + id);
-      const dayOf = () => { const v = g('q-day').value; return v === 'new' ? { date: addDays(tr.days[tr.days.length - 1]?.date || todayIso(), tr.days.length ? 1 : 0), n: tr.days.length + 1 } : { date: tr.days[+v].date, n: +v + 1 }; };
-      const paint = () => {
-        g('q-list').innerHTML = queue.map((r, i) => `<li><span class="q-t">${esc(r[0])}${r[1] ? ' ' + esc(r[1]) : ''}</span><span class="q-m"><b class="user-text">${esc(r[4] || r[5])}</b><small>${esc([r[2], r[5] && r[4] ? r[5] : '', r[6]].filter(Boolean).join(' · '))}</small></span><button type="button" class="icon-btn" data-csv="q-del" data-i="${i}" aria-label="${t('Remove')}">✕</button></li>`).join('');
-        g('q-actions').hidden = !queue.length;
-      };
       const show = (grid, fallback) => {
         try { const res = csvPreview(tr, grid); pending = grid; g('csv-preview').innerHTML = csvPreviewHtml(res, fallback); g('csv-preview').scrollIntoView({ block: 'nearest' }); }
         catch (e) { pending = null; g('csv-preview').innerHTML = `<p class="csv-warn">${esc(t(e.message))}</p>`; }
       };
-      root.onkeydown = e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); if (e.target.id !== 'q-place') root.querySelector('[data-csv=add]').click(); } };
       root.onclick = async e => {
         const b = e.target.closest('button'); if (!b) return;
-        if (b.dataset.time) g('q-time').value = b.dataset.time;
-        else if (b.dataset.cat) { cat = b.dataset.cat; root.querySelectorAll('[data-cat]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); }
-        else if (b.dataset.note) { const n = g('q-note'), tag = `[${b.dataset.note}]`; if (!n.value.includes(tag)) n.value = (n.value.trim() ? n.value.trim() + ' ' : '') + tag; }
-        else switch (b.dataset.csv) {
+        switch (b.dataset.csv) {
           case 'import': {
             const f = await csvPickFile(); if (!f) break;
             try {
@@ -264,18 +235,7 @@ function csvImportSheet(tr) {
           }
           case 'confirm': try { csvApply(tr, pending); } catch (err) { toast(err.message); } break;
           case 'xlsx-blank': xlsxTemplateDownload(tr); break;
-          case 'blank': download(csvFilename(tr, 'template'), csvText(csvBlankRows(tr)), 'text/csv;charset=utf-8'); break;
-          case 'sample': download(csvFilename(tr, 'sample'), csvText(csvTemplateRows(tr)), 'text/csv;charset=utf-8'); break;
-          case 'add': {
-            const title = g('q-title').value.trim(), place = g('q-place').value.trim(); if (!title && !place) return toast('Enter a title or a map place.');
-            const dd = dayOf(), known = tr.spots.find(s => s.name.toLowerCase() === place.toLowerCase());
-            queue.push([dd.date, g('q-time').value.trim(), place ? (known ? known.cat : cat) : '', dd.n, title || place, place, g('q-note').value.trim(), '', '', '', '', '', '']);
-            ['q-time', 'q-title', 'q-place', 'q-note'].forEach(id => g(id).value = ''); paint(); g('q-title').focus(); break;
-          }
-          case 'q-del': queue.splice(+b.dataset.i, 1); paint(); break;
-          case 'q-clear': queue.length = 0; paint(); break;
-          case 'q-download': download(csvFilename(tr, 'rows'), csvText(queue), 'text/csv;charset=utf-8'); break;
-          case 'q-import': show([CSV_COLS, ...queue], false); break;
+          case 'xlsx-sample': xlsxTemplateDownload(tr, true); break;
         }
       };
     }

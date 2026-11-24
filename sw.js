@@ -1,6 +1,6 @@
 // Caches the app so it opens without signal (e.g. on a train in Japan).
-// Deploy: bump V here AND the ?v= ids in index.html (same value), e.g. with: sed -i 's/46-drag-cover-fix/NEW/g' sw.js index.html
-const V = '46-drag-cover-fix';
+// Deploy: bump V here AND the ?v= ids in index.html (same value), e.g. with: sed -i 's/49-xlsx-tag-columns/NEW/g' sw.js index.html
+const V = '49-xlsx-tag-columns';
 const VERSION = 'trips-v' + V;
 const q = f => f + '?v=' + V;
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', q('style.css'),

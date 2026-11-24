@@ -166,46 +166,70 @@ function xlsxBuild(ExcelJS, tr, now = new Date()) {
    and the instruction sheet survive in Excel, Numbers and Google Sheets (File → Import → Upload), which a CSV cannot do.
    Import reads the filled-in .xlsx (also a Google Sheets "Download → Microsoft Excel" file, and this app's own Export Excel). */
 const XLSX_TPL_ROWS = 80;                                   // formatted, ready-to-type rows (at least one per trip day)
-const XLSX_CORE = ['Date', 'Day', 'Time', 'Title', 'Category', 'Map place', 'Notes'];   // green headers; the rest are optional extras
-const XLSX_COL_W = { Date: 12, Time: 9, Category: 20, Day: 6, Title: 28, 'Map place': 24, Notes: 36, Lat: 11, Lon: 11, 'Day title': 20, Area: 16, Hours: 14, Link: 28 };
+const XLSX_TAG_COLS = ['Tag 1', 'Tag 2', 'Tag 3'];                  // pick up to three predefined tags per stop; import adds them to the note as [Tag]
+const XLSX_TPL_COLS = CSV_COLS.flatMap(c => c === 'Notes' ? [c, ...XLSX_TAG_COLS] : [c]);
+const XLSX_CORE = ['Date', 'Day', 'Time', 'Title', 'Category', 'Map place', 'Notes', ...XLSX_TAG_COLS];   // green headers; the rest are optional extras
+const XLSX_COL_W = { 'Tag 1': 14, 'Tag 2': 14, 'Tag 3': 14, Date: 12, Time: 9, Category: 20, Day: 6, Title: 28, 'Map place': 24, Notes: 36, Lat: 11, Lon: 11, 'Day title': 20, Area: 16, Hours: 14, Link: 28 };
 
-function xlsxTemplateBuild(ExcelJS, tr, now = new Date()) {
+function xlsxTemplateBuild(ExcelJS, tr, now = new Date(), sample = false) {
   const wb = new ExcelJS.Workbook(); wb.creator = 'Trips'; wb.created = now;
   const st = wb.addWorksheet('Stops', { properties: { tabColor: { argb: XL.green } }, views: [{ state: 'frozen', ySplit: 3 }] });
   const help = wb.addWorksheet('How to fill', { properties: { tabColor: { argb: XL.lime } } });
   const lists = wb.addWorksheet('Lists');
-  const n = CSV_COLS.length, labels = Object.keys(CATS).map(k => CATS[k].label);
+  const n = XLSX_TPL_COLS.length, labels = Object.keys(CATS).map(k => CATS[k].label);
 
-  /* Lists (dropdown sources) */
-  xlsxHeadRow(lists, 1, ['Category', 'Note tags', 'Time ideas']); lists.columns = [24, 16, 16].map(width => ({ width }));
-  labels.forEach((l, i) => { lists.getCell(i + 2, 1).value = l; });
-  CSV_NOTE_TAGS.forEach((x, i) => { lists.getCell(i + 2, 2).value = `[${x}]`; });
-  CSV_TIME_TAGS.forEach(([name, v], i) => { lists.getCell(i + 2, 3).value = `${name} ${v}`; });
-  for (let r = 2; r <= 9; r++) for (let c = 1; c <= 3; c++) { const cell = lists.getCell(r, c); cell.font = xlFont(); cell.border = xlBorder(); }
+  /* Lists (dropdown sources): these power the quick-entry dropdowns on the Stops tab */
+  const times = []; for (let h = 6; h <= 23; h++) for (const m of ['00', '30']) times.push(`${String(h).padStart(2, '0')}:${m}`);
+  const quick = CSV_TIME_TAGS.map(([, v]) => v), timeList = [...quick, ...times.filter(x => !quick.includes(x))];   // Morning / Lunch / Afternoon / Dinner / Evening first
+  const tags = CSV_NOTE_TAGS.slice(), places = [...new Set(tr.spots.map(s => s.name).filter(Boolean))], dates = tr.days.map(d => d.date);
+  const colLists = [['Category', labels, 24], ['Time', timeList, 10], ['Tags', tags, 16], ['Saved places', places, 30], ['Trip dates', dates, 14]];
+  xlsxHeadRow(lists, 1, colLists.map(c => c[0])); lists.columns = colLists.map(c => ({ width: c[2] }));
+  colLists.forEach(([name, vals], ci) => vals.forEach((v, i) => {
+    const cell = lists.getCell(i + 2, ci + 1);
+    if (name === 'Trip dates') { cell.value = xlsxDate(v); cell.numFmt = 'yyyy-mm-dd'; } else { cell.value = v; cell.numFmt = '@'; }
+    cell.font = xlFont(); cell.border = xlBorder();
+  }));
+  const listRef = (ci, len) => `Lists!$${String.fromCharCode(65 + ci)}$2:$${String.fromCharCode(65 + ci)}$${1 + Math.max(1, len)}`;
 
   /* Stops */
-  st.columns = CSV_COLS.map(c => ({ width: XLSX_COL_W[c] || 14 }));
-  xlsxTitleBar(st, n, `${tr.name || 'Trip'} · Stops template`, 'Fill in, then Import in Trips');
+  st.columns = XLSX_TPL_COLS.map(c => ({ width: XLSX_COL_W[c] || 14 }));
+  xlsxTitleBar(st, n, `${tr.name || 'Trip'} · Stops ${sample ? 'sample' : 'template'}`, 'Fill in, then Import in Trips');
   st.getCell('A2').value = 'One row per stop. Date or Day is enough to place a stop; Title is the stop name. Green columns are the usual ones, the rest are optional. See the “How to fill” tab.';
   st.getCell('A2').font = xlFont({ color: { argb: XL.mute } });
-  xlsxHeadRow(st, 3, CSV_COLS);
-  CSV_COLS.forEach((c, i) => { if (!XLSX_CORE.includes(c)) st.getCell(3, i + 1).fill = xlFill(XL.dark); });
+  xlsxHeadRow(st, 3, XLSX_TPL_COLS);
+  XLSX_TPL_COLS.forEach((c, i) => { if (!XLSX_CORE.includes(c)) st.getCell(3, i + 1).fill = xlFill(XL.dark); });
   const days = tr.days.length ? tr.days : [{ date: todayIso() }], total = Math.max(XLSX_TPL_ROWS, days.length + 20);
-  const col = name => CSV_COLS.indexOf(name) + 1;
+  const col = name => XLSX_TPL_COLS.indexOf(name) + 1;
   for (let k = 0; k < total; k++) {
     const r = 4 + k, band = k % 2 === 1, d = days[k];
-    CSV_COLS.forEach((name, i) => {
+    XLSX_TPL_COLS.forEach((name, i) => {
       const cell = st.getCell(r, i + 1); cell.font = xlFont(); cell.border = xlBorder(); if (band) cell.fill = xlFill(XL.band);
       cell.alignment = { vertical: 'top', wrapText: name === 'Title' || name === 'Notes' || name === 'Map place', horizontal: ['Day', 'Lat', 'Lon'].includes(name) ? 'center' : 'left' };
-      if (CSV_TEXT_COLS.includes(name)) cell.numFmt = '@';       // text, so 9:00 and “=...” stay exactly as typed
+      if (CSV_TEXT_COLS.includes(name) || XLSX_TAG_COLS.includes(name)) cell.numFmt = '@';       // text, so 9:00 and “=...” stay exactly as typed
     });
     st.getCell(r, col('Date')).numFmt = 'yyyy-mm-dd'; st.getCell(r, col('Day')).numFmt = '0'; st.getCell(r, col('Lat')).numFmt = '0.000000'; st.getCell(r, col('Lon')).numFmt = '0.000000';
-    if (d) { st.getCell(r, col('Date')).value = xlsxDate(d.date); st.getCell(r, col('Day')).value = k + 1; }
+    if (d && !sample) { st.getCell(r, col('Date')).value = xlsxDate(d.date); st.getCell(r, col('Day')).value = k + 1; }
+    // quick entry: pick from a dropdown, or just type something else
+    if (dates.length) st.getCell(r, col('Date')).dataValidation = { type: 'list', allowBlank: true, formulae: [listRef(4, dates.length)], showErrorMessage: false, showInputMessage: true, promptTitle: 'Date', prompt: 'Pick a trip day, or type a date (YYYY-MM-DD).' };
+    st.getCell(r, col('Time')).dataValidation = { type: 'list', allowBlank: true, formulae: [listRef(1, timeList.length)], showErrorMessage: false, showInputMessage: true, promptTitle: 'Time', prompt: 'Pick a time, or type your own (9:00, 9am, Late lunch).' };
+    if (places.length) st.getCell(r, col('Map place')).dataValidation = { type: 'list', allowBlank: true, formulae: [listRef(3, places.length)], showErrorMessage: false, showInputMessage: true, promptTitle: 'Map place', prompt: 'Pick a saved place, or type a new name.' };
+    XLSX_TAG_COLS.forEach(tc => { st.getCell(r, col(tc)).dataValidation = { type: 'list', allowBlank: true, formulae: [listRef(2, tags.length)], showErrorMessage: false, showInputMessage: true, promptTitle: tc, prompt: 'Pick a tag from the list (or type your own). It is added to the stop\'s note on import.' }; });
     st.getCell(r, col('Category')).dataValidation = { type: 'list', allowBlank: true, formulae: [`Lists!$A$2:$A$${1 + labels.length}`], showErrorMessage: true, errorTitle: 'Category', error: 'Pick a category from the list.' };
     st.getCell(r, col('Day')).dataValidation = { type: 'whole', operator: 'between', allowBlank: true, formulae: [1, 90], showErrorMessage: true, errorTitle: 'Day', error: 'Day is a number from 1 to 90.' };
     st.getCell(r, col('Lat')).dataValidation = { type: 'decimal', operator: 'between', allowBlank: true, formulae: [-90, 90], showErrorMessage: true, errorTitle: 'Lat', error: 'Latitude is between -90 and 90.' };
     st.getCell(r, col('Lon')).dataValidation = { type: 'decimal', operator: 'between', allowBlank: true, formulae: [-180, 180], showErrorMessage: true, errorTitle: 'Lon', error: 'Longitude is between -180 and 180.' };
   }
+  if (sample) csvTemplateRows(tr).forEach((row, k) => row.forEach((v, i) => {       // filled-in example rows
+    if (v === '' || v == null) return;
+    const name = CSV_COLS[i], cell = st.getCell(4 + k, col(name));
+    if (name === 'Notes') {                                                          // [Tags] in a note go to the Tag columns
+      const found = [...String(v).matchAll(/\[([^\]]+)\]/g)].map(m => m[1]), text = String(v).replace(/\s*\[[^\]]+\]/g, '').trim();
+      if (text) cell.value = text;
+      found.slice(0, XLSX_TAG_COLS.length).forEach((tg, ti) => { st.getCell(4 + k, col(XLSX_TAG_COLS[ti])).value = tg; });
+      return;
+    }
+    cell.value = name === 'Date' ? xlsxDate(v) : name === 'Day' ? +v : name === 'Category' ? (CATS[v]?.label || v) : v;
+  }));
   st.autoFilter = { from: { row: 3, column: 1 }, to: { row: 3 + total, column: n } };
 
   /* How to fill */
@@ -216,9 +240,9 @@ function xlsxTemplateBuild(ExcelJS, tr, now = new Date()) {
   const first = days[0].date;
   const doc = [
     ['Date', 'The day, as YYYY-MM-DD. Wins over Day when both are filled.', first], ['Day', 'Day number, 1 = first day of the trip.', '1'],
-    ['Time', 'Free text. 9:00, 9am, 9:30pm become 09:00, 09:00, 21:30.', '09:00'], ['Title', 'Stop name. Falls back to Map place when empty.', 'Hotel check-in'],
-    ['Category', 'Pick from the dropdown (see the Lists tab).', labels[0]], ['Map place', 'Name of the pin on the map. An existing place with that name is reused, otherwise a new one is made.', 'Hotel name'],
-    ['Notes', 'Free text. Tags go in square brackets (see the Lists tab).', 'Leave bags if early [Check hours]'], ['Lat, Lon', 'Optional pin for a new Map place, e.g. 35.689487 and 139.691711.', '35.689487 / 139.691711'],
+    ['Time', 'Pick from the dropdown (Morning 09:00, Lunch 12:00, Afternoon 15:00, Dinner 18:30, Evening 20:00 come first) or type your own. 9:00, 9am, 9:30pm become 09:00, 09:00, 21:30.', '09:00'], ['Title', 'Stop name. Falls back to Map place when empty.', 'Hotel check-in'],
+    ['Category', 'Pick from the dropdown (see the Lists tab).', labels[0]], ['Map place', 'Pick a saved place from the dropdown, or type a new name. An existing place with that name is reused, otherwise a new one is made.', 'Hotel name'],
+    ['Notes', 'Free text.', 'Leave bags if early'], ['Tag 1, 2, 3', 'Up to three predefined tags per stop. Pick each from its own dropdown (Excel cannot put several picks in one cell). On import they are added to the note as [Tag]; a tag you type yourself works too.', 'Check hours / Cash only'], ['Lat, Lon', 'Optional pin for a new Map place, e.g. 35.689487 and 139.691711.', '35.689487 / 139.691711'],
     ['Day title, Area', 'Optional. Filled in only when the day has none yet.', 'Arrival day / Station area'], ['Hours, Link', 'Optional. Opening hours, and a link starting with http(s).', '11:00-14:00']
   ];
   doc.forEach((row, i) => row.forEach((v, c) => { const cell = help.getCell(6 + i, c + 1); cell.value = v; cell.font = xlFont({ bold: c === 0 }); cell.border = xlBorder(); cell.alignment = { vertical: 'top', wrapText: true }; if (i % 2) cell.fill = xlFill(XL.band); }));
@@ -249,7 +273,7 @@ function xlsxCellText(v, kind) {
   }
   return String(v).trim();
 }
-const XLSX_HEAD_ALIAS = { ...CSV_ALIASES, coordinates: 'Coords', type: 'Type', 'location link': 'LocLink' };
+const XLSX_HEAD_ALIAS = { 'tag 1': 'Tag1', 'tag 2': 'Tag2', 'tag 3': 'Tag3', ...CSV_ALIASES, coordinates: 'Coords', type: 'Type', 'location link': 'LocLink' };
 const xlsxHeadOf = v => XLSX_HEAD_ALIAS[String(xlsxCellText(v)).trim().toLowerCase()] || '';
 
 /* .xlsx -> the same grid csvParse() makes (CSV_COLS header + rows), so csvPreview / csvApply work unchanged.
@@ -274,6 +298,8 @@ async function xlsxReadGrid(ExcelJS, buf) {
     if (!heads.some((h, ci) => h && xlsxCellText(row.getCell(ci).value).trim())) continue;
     const o = Object.fromEntries(CSV_COLS.map(c => [c, get(c)]));
     if (at('Coords') > 0 && !o.Lat && !o.Lon) { const m = /(-?\d+(?:\.\d+)?)\s*[,;]\s*(-?\d+(?:\.\d+)?)/.exec(get('Coords')); if (m) { o.Lat = m[1]; o.Lon = m[2]; } }
+    const tagged = ['Tag1', 'Tag2', 'Tag3'].map(get).filter(Boolean).map(x => /^\[.*\]$/.test(x) ? x : `[${x}]`).filter(x => !o.Notes.includes(x));
+    if (tagged.length) o.Notes = [o.Notes, ...new Set(tagged)].filter(Boolean).join(' ');   // Tag 1-3 dropdowns become [Tag] in the note
     if (!o.Category && at('Type') > 0) o.Category = { hotel: 'base', meal: 'food' }[get('Type').toLowerCase()] || '';
     if (exportLayout && !o.Lat && !o.Lon && o['Map place']) { o.Title = o.Title || o['Map place']; o['Map place'] = ''; }   // a stop without a pin was only a title
     grid.push(CSV_COLS.map(c => o[c]));
@@ -316,12 +342,12 @@ async function xlsxExport(tr) {
   } catch (e) { toast(e.message || 'Export failed.'); }
 }
 
-async function xlsxTemplateDownload(tr) {
+async function xlsxTemplateDownload(tr, sample = false) {
   toast('Building Excel…');
   try {
     await xlsxLoad();
-    const buf = await xlsxTemplateBuild(window.ExcelJS, tr).xlsx.writeBuffer();
-    await saveFile(`${slug(tr.name)}-itinerary-template.xlsx`, new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    const buf = await xlsxTemplateBuild(window.ExcelJS, tr, new Date(), sample).xlsx.writeBuffer();
+    await saveFile(`${slug(tr.name)}-itinerary-${sample ? 'sample' : 'template'}.xlsx`, new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
   } catch (e) { toast(e.message || 'Export failed.'); }
 }
 async function xlsxReadFile(f) {
