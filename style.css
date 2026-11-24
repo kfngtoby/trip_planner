@@ -734,3 +734,10 @@ dialog#sheet{padding-bottom:var(--safe-b)}
 /* v45: Add day sits below the last day block */
 .add-day-row{display:flex;justify-content:center;padding:14px 0 24px}
 .add-day-row .text-btn{min-width:160px}
+
+/* v46: the dragged row's own card background must not cover the swapped stop sliding into its slot */
+.stops.drag-on .stop.dragging .stop-in,.stops.drag-on .stop.settling .stop-in{background:transparent}
+.stops.drag-on .stop.dragging,.stops.drag-on .stop.settling{background:transparent}
+.stops.drag-on .stop.swap-target{z-index:7}
+.stops.drag-on .stop.swap-target .stop-main{position:relative;z-index:7}
+.stops.drag-on .stop.dragging,.stops.drag-on .stop.settling{z-index:8}
