@@ -1,16 +1,19 @@
-/* iOS standalone PWA & touch responsiveness tuning */
+/* iOS standalone PWA, MapLibre WebGL docked spot card, and Find Nearby cleanup */
 html,body{overscroll-behavior-y:none}
 a,button,.btn,label,summary,[role="tab"],[role="button"],.day-head,.chip,.trip-link,.back,.pill{touch-action:manipulation}
 #map{touch-action:none}
-/* Keep Leaflet tiles on iOS WebKit GPU compositor (no per-frame software CSS filter rasterization) */
 .leaflet-tile-pane,.base-muted{filter:none!important;-webkit-filter:none!important}
 .base-muted{opacity:.88}
 button,.btn,.tabbar a,.day-head,.stop,.day-chips button,.cat-chip{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
-/* Avoid GPU-heavy stacked backdrop-filter blurs on mobile scroll/touch */
 .bar,.view-days .toolbar{background:var(--paper)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
 .tabbar{background:var(--card)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
 .bar{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px))}
 .tabbar{padding-left:max(8px,env(safe-area-inset-left,0px));padding-right:max(8px,env(safe-area-inset-right,0px))}
+/* Docked Overview spot card: zero floating-over-pin layout thrashing */
+.spot-card.gl-dock-card{position:absolute!important;left:10px!important;right:10px!important;bottom:10px!important;top:auto!important;transform:none!important;width:auto!important;max-width:none!important;z-index:600}
+.maplibregl-ctrl-bottom-right{z-index:5}
+/* Remove "Not interested · Another batch" button from Find Nearby */
+button[data-disc="more"]{display:none!important}
 @media all and (display-mode:standalone){
   html,body{overscroll-behavior:none}
 }

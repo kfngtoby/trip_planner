@@ -1,12 +1,14 @@
 // Caches the app so it opens without signal (e.g. on a train in Japan).
-// Deploy: bump V here AND the ?v= ids in index.html (same value), e.g. with: sed -i 's/58-ios-pwa-speed/NEW/g' sw.js index.html
-const V = '58-ios-pwa-speed';
+// Deploy: bump V here AND the ?v= ids in index.html (same value), e.g. with: sed -i 's/59-maplibre-webgl/NEW/g' sw.js index.html
+const V = '59-maplibre-webgl';
 const VERSION = 'trips-v' + V;
 const q = f => f + '?v=' + V;
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', q('style.css'), q('ios.css'),
   ...['locale', 'seed', 'seed-research', 'store', 'fashion-catalog', 'places', 'reco', 'fx', 'receipt', 'locate', 'splitter',
     'firebase-config', 'sync', 'ai', 'discovery', 'csv', 'xlsx', 'map-enhancements', 'app', 'slowpoke'].map(n => q(n + '.js'))];
 const OPTIONAL = ['slowpoke.png', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png',
+  'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js',
+  'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'];
 
@@ -19,9 +21,10 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
-  // Map tiles: keep what you've already viewed, so areas you looked at earlier still show offline.
-  if (url.hostname === 'tile.openstreetmap.org') {
-    e.respondWith(caches.open('tiles-v2').then(async c => {
+  // Map tiles (OpenFreeMap WebGL vector tiles + OSM fallback): cache viewed areas offline.
+  if (url.hostname === 'tiles.openfreemap.org' || url.hostname === 'tile.openstreetmap.org') {
+    const cacheName = url.hostname === 'tiles.openfreemap.org' ? 'tiles-gl-v1' : 'tiles-v2';
+    e.respondWith(caches.open(cacheName).then(async c => {
       const hit = await c.match(e.request);
       if (hit) return hit;
       try {
@@ -40,8 +43,8 @@ self.addEventListener('fetch', e => {
     }));
     return;
   }
-  // App files: serve from cache, refresh in the background.
-  if (url.origin === location.origin || url.hostname === 'cdnjs.cloudflare.com') {
+  // App files & map SDKs: serve from cache, refresh in the background.
+  if (url.origin === location.origin || url.hostname === 'cdnjs.cloudflare.com' || url.hostname === 'unpkg.com') {
     e.respondWith(caches.open(VERSION).then(async c => {
       const hit = await c.match(e.request);
       const net = fetch(e.request).then(res => { if (res.ok) c.put(e.request, res.clone()); return res; });
