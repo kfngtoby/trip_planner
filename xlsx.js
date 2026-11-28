@@ -290,3 +290,269 @@ async function xlsxReadFile(f) {
   await xlsxLoad();
   return xlsxReadGrid(window.ExcelJS, await f.arrayBuffer());
 }
+
+/* ==========================================================================
+   Expenses Excel (Export Excel, Blank Template, Sample & Import)
+   Shares the exact XL palette, Arial typography, title bar, header row and
+   sheet pattern as the Days tab workbook above so both templates look like
+   one coherent system and round-trip cleanly.
+   ========================================================================== */
+
+const EXP_XLSX_COLS = ['Date', 'Item', 'Category', 'Amount', 'Who paid', 'How to split', 'Converted', 'Currency', 'FX Rate', 'Split details'];
+const EXP_XLSX_FILL = ['Date', 'Item', 'Category', 'Amount', 'Who paid', 'How to split'];
+const EXP_XLSX_W = { Date: 13, Item: 28, Category: 16, Amount: 13, 'Who paid': 20, 'How to split': 14, Converted: 14, Currency: 11, 'FX Rate': 11, 'Split details': 32 };
+const EXP_XLSX_MODES = ['Equal', 'Exact', 'Percent', 'Shares'];
+const EXP_XLSX_CURS = ['HKD', 'JPY', 'USD', 'EUR', 'GBP', 'TWD', 'CNY', 'KRW', 'SGD', 'THB', 'AUD'];
+const EXP_XLSX_HEAD_ROW = 5, EXP_XLSX_SPARE = 25, EXP_MEMBER_ROW0 = 6, EXP_MEMBER_MAX = 30;
+
+const expModeLabel = m => ({ equal: 'Equal', exact: 'Exact', percent: 'Percent', shares: 'Shares' }[String(m || 'equal').toLowerCase()] || 'Equal');
+
+function expFormatPayers(tr, e) {
+  const entries = Object.entries(e.paid || {}).filter(([, v]) => v > 0);
+  if (entries.length === 1) return memberName(tr, entries[0][0]);
+  return entries.map(([id, v]) => `${memberName(tr, id)}: ${(v / 100).toFixed(2)}`).join(', ');
+}
+
+function expFormatSplitDetails(tr, e) {
+  const mode = (e.mode || 'equal').toLowerCase();
+  const owedIds = Object.keys(e.owed || {});
+  if (mode === 'equal') {
+    if (owedIds.length === tr.members.length && tr.members.every(m => owedIds.includes(m.id))) return '';
+    return owedIds.map(id => memberName(tr, id)).join(', ');
+  }
+  if (mode === 'exact') return owedIds.map(id => `${memberName(tr, id)}: ${((e.owed[id] || 0) / 100).toFixed(2)}`).join(', ');
+  if (mode === 'percent') return owedIds.map(id => `${memberName(tr, id)}: ${e.weights?.[id] ?? 0}%`).join(', ');
+  if (mode === 'shares') return owedIds.map(id => `${memberName(tr, id)}: ${e.weights?.[id] ?? 1}`).join(', ');
+  return '';
+}
+
+function expXlsxRecords(tr) {
+  const dayDate = id => tr.days.find(d => d.id === id)?.date || '';
+  return [...(tr.expenses || [])].sort((a, b) => (dayDate(a.dayId) || '9').localeCompare(dayDate(b.dayId) || '9') || (a.created || 0) - (b.created || 0)).map(e => ({
+    date: dayDate(e.dayId),
+    item: e.name || '',
+    category: e.category || 'Other',
+    amount: e.orig ? e.orig.amount : +(e.amount / 100).toFixed(2),
+    whoPaid: expFormatPayers(tr, e),
+    split: expModeLabel(e.mode),
+    converted: +(e.amount / 100).toFixed(2),
+    currency: e.orig ? e.orig.cur : (tr.currency || 'HKD'),
+    rate: e.orig ? e.orig.rate : 1,
+    details: expFormatSplitDetails(tr, e)
+  }));
+}
+
+function expXlsxSampleRecords(tr) {
+  const days = tr.days.length ? tr.days : [{ date: todayIso() }];
+  const d0 = days[0].date, d1 = days[Math.min(1, days.length - 1)].date, d2 = days[Math.min(2, days.length - 1)].date;
+  const m1 = tr.members[0]?.name || 'You', m2 = tr.members[1]?.name || 'Partner';
+  const cur = tr.currency || 'HKD';
+  return [
+    { date: d0, item: 'Outbound flights', category: 'Flights', amount: 2237, whoPaid: m1, split: 'Equal', currency: cur, rate: 1, details: '' },
+    { date: d0, item: 'Hotel stay (4 nights)', category: 'Accommodation', amount: 1446.39, whoPaid: m1, split: 'Equal', currency: cur, rate: 1, details: '' },
+    { date: d1, item: 'Aquarium tickets', category: 'Attractions', amount: 5400, whoPaid: m2, split: 'Equal', currency: 'JPY', rate: 0.052, details: '' },
+    { date: d1, item: 'Kobe beef lunch', category: 'Food', amount: 18000, whoPaid: m1, split: 'Percent', currency: 'JPY', rate: 0.052, details: `${m1}: 60%, ${m2}: 40%` },
+    { date: d1, item: 'Shinkansen & metro', category: 'Transport', amount: 6400, whoPaid: m2, split: 'Shares', currency: 'JPY', rate: 0.052, details: `${m1}: 1, ${m2}: 1` },
+    { date: d2, item: 'Pokémon cards & snacks', category: 'Shopping', amount: 450, whoPaid: m1, split: 'Exact', currency: cur, rate: 1, details: `${m1}: 300, ${m2}: 150` },
+    { date: d2, item: 'Pocket Wi-Fi / eSIM', category: 'Other', amount: 120, whoPaid: m2, split: 'Equal', currency: cur, rate: 1, details: `${m1}, ${m2}` }
+  ];
+}
+
+/* mode: 'export' (current trip expenses), 'blank' (empty formatted rows), or 'sample' (example expenses covering every category & split mode). */
+function expXlsxBuild(ExcelJS, tr, now = new Date(), mode = 'export') {
+  const wb = new ExcelJS.Workbook(); wb.creator = 'Trips'; wb.created = now;
+  const ex = wb.addWorksheet('Expenses', { properties: { tabColor: { argb: XL.green } }, views: [{ state: 'frozen', ySplit: EXP_XLSX_HEAD_ROW }] });
+  const mi = wb.addWorksheet('Members & Info', { views: [{ state: 'frozen', ySplit: 1 }] });
+  const help = wb.addWorksheet('How to fill', { properties: { tabColor: { argb: XL.lime } } });
+  const ls = wb.addWorksheet('Lists');
+  ex.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+
+  const stamp = now.toISOString().slice(0, 10), n = EXP_XLSX_COLS.length, col = name => EXP_XLSX_COLS.indexOf(name) + 1;
+  const sample = mode === 'sample', blank = mode === 'blank', cur = tr.currency || 'HKD';
+  const days = tr.days.length ? tr.days : [{ date: todayIso() }];
+  const start = days[0].date, end = days[days.length - 1].date;
+  const members = tr.members.length ? tr.members.map(m => m.name) : ['You', 'Partner'];
+  const sheetMembers = sample && members.length < 2 ? [members[0], 'Partner'] : members;
+
+  /* ----- Lists (dropdown sources) ----- */
+  const curList = [cur, ...EXP_XLSX_CURS.filter(c => c !== cur)];
+  const dates = days.map(d => d.date);
+  const colLists = [['Category', EXPENSE_CATS.slice(), 18], ['How to split', EXP_XLSX_MODES.slice(), 14], ['Currency', curList, 12], ['Trip dates', dates, 14]];
+  xlsxHeadRow(ls, 1, colLists.map(c => c[0])); ls.columns = colLists.map(c => ({ width: c[2] }));
+  colLists.forEach(([name, vals], ci) => vals.forEach((v, i) => {
+    const cell = ls.getCell(i + 2, ci + 1);
+    if (name === 'Trip dates') { cell.value = xlsxDate(v); cell.numFmt = 'yyyy-mm-dd'; }
+    else { cell.value = v; cell.numFmt = '@'; }
+    cell.font = xlFont(); cell.border = xlBorder();
+  }));
+  const listRef = (ci, len) => `Lists!$${String.fromCharCode(65 + ci)}$2:$${String.fromCharCode(65 + ci)}$${1 + Math.max(1, len)}`;
+  const memberRef = `'Members & Info'!$A$${EXP_MEMBER_ROW0}:$A$${EXP_MEMBER_ROW0 + EXP_MEMBER_MAX - 1}`;
+
+  /* ----- Members & Info (single source of truth for trip members) ----- */
+  mi.columns = [22, 26, 4, 18, 24].map(width => ({ width }));
+  const label = mode === 'export' ? `Exported from Trips · ${stamp}` : blank ? 'Blank template · fill in, then Import in Trips' : 'Sample · same layout as an export';
+  xlsxTitleBar(mi, 5, `${tr.name || 'Trip'} · Expenses${sample ? ' (sample)' : ''}`, label.replace(/ · fill in.*$/, ''));
+  mi.getCell('A3').value = 'Trip members & details'; mi.getCell('A3').font = xlFont({ size: 14, bold: true });
+  mi.getCell('A4').value = 'Add or rename trip members below. This list feeds the "Who paid" dropdown on the Expenses sheet and syncs on import.';
+  mi.getCell('A4').font = xlFont({ color: { argb: XL.mute } });
+  xlsxHeadRow(mi, 5, ['Member name', 'Notes'], 1, () => XL.green);
+  xlsxHeadRow(mi, 5, ['Trip field', 'Value'], 4, () => XL.dark);
+
+  for (let i = 0; i < EXP_MEMBER_MAX; i++) {
+    const r = EXP_MEMBER_ROW0 + i, a = mi.getCell(r, 1), b = mi.getCell(r, 2);
+    a.value = sheetMembers[i] || ''; a.font = xlFont({ bold: !!sheetMembers[i] }); a.border = xlBorder(); a.numFmt = '@';
+    b.value = ''; b.font = xlFont(); b.border = xlBorder();
+    if (i % 2) { a.fill = xlFill(XL.band); b.fill = xlFill(XL.band); }
+  }
+  const info = [
+    ['Trip name', tr.name || '', null],
+    ['Base currency', cur, '@'],
+    ['Start date', xlsxDate(start), 'yyyy-mm-dd'],
+    ['End date', xlsxDate(end), 'yyyy-mm-dd'],
+    ['Members count', { formula: `COUNTA(A${EXP_MEMBER_ROW0}:A${EXP_MEMBER_ROW0 + EXP_MEMBER_MAX - 1})`, result: sheetMembers.length }, '0']
+  ];
+  info.forEach(([lab, value, fmt], i) => {
+    const r = EXP_MEMBER_ROW0 + i, d = mi.getCell(r, 4), e = mi.getCell(r, 5);
+    d.value = lab; d.font = xlFont({ bold: true }); d.border = xlBorder();
+    e.value = value; e.font = xlFont({ bold: true }); e.border = xlBorder(); e.alignment = { horizontal: 'left' };
+    if (fmt) e.numFmt = fmt;
+    if (i % 2) { d.fill = xlFill(XL.band); e.fill = xlFill(XL.band); }
+  });
+
+  /* ----- Expenses sheet ----- */
+  const recs = sample ? expXlsxSampleRecords(tr) : blank ? [] : expXlsxRecords(tr);
+  ex.columns = EXP_XLSX_COLS.map(c => ({ width: EXP_XLSX_W[c] }));
+  xlsxTitleBar(ex, n, `${tr.name || 'Trip'} · Expenses${sample ? ' (sample)' : ''}`, label);
+  ex.getCell('A3').value = 'Expenses'; ex.getCell('A3').font = xlFont({ size: 14, bold: true });
+  ex.getCell('A4').value = `Fill the green columns: Date, Item, Category, Amount, Who paid, How to split. Converted (${cur}) fills itself. Dark columns are optional. Manage members in "Members & Info".`;
+  ex.getCell('A4').font = xlFont({ color: { argb: XL.mute } });
+  xlsxHeadRow(ex, EXP_XLSX_HEAD_ROW, EXP_XLSX_COLS, 1, l => EXP_XLSX_FILL.includes(l) ? XL.green : l === 'Converted' ? XL.auto : XL.dark);
+
+  const totalRows = Math.max(recs.length + (blank || sample ? EXP_XLSX_SPARE : 15), EXP_XLSX_SPARE);
+  const last = EXP_XLSX_HEAD_ROW + totalRows;
+  for (let r = EXP_XLSX_HEAD_ROW + 1; r <= last; r++) {
+    const idx = r - EXP_XLSX_HEAD_ROW - 1, rec = recs[idx], band = idx % 2 === 1;
+    for (let c = 1; c <= n; c++) {
+      const cell = ex.getCell(r, c); cell.font = xlFont(); cell.border = xlBorder();
+      if (band) cell.fill = xlFill(XL.band);
+      cell.alignment = { vertical: 'top', wrapText: [col('Item'), col('Who paid'), col('Split details')].includes(c), horizontal: [col('Amount'), col('Converted'), col('FX Rate')].includes(c) ? 'right' : [col('Date'), col('Currency'), col('How to split')].includes(c) ? 'center' : 'left' };
+    }
+    ex.getCell(r, col('Date')).numFmt = 'yyyy-mm-dd';
+    ex.getCell(r, col('Amount')).numFmt = '#,##0.00';
+    ex.getCell(r, col('Converted')).numFmt = '#,##0.00';
+    ex.getCell(r, col('FX Rate')).numFmt = '0.####';
+    const formula = `IF(D${r}="","",ROUND(D${r}*IF(I${r}="",1,I${r}),2))`;
+    const convRes = rec ? +(rec.converted != null ? rec.converted : +(rec.amount * (rec.rate || 1)).toFixed(2)) : '';
+    ex.getCell(r, col('Converted')).value = { formula, result: convRes };
+    if (!rec) continue;
+    if (rec.date) ex.getCell(r, col('Date')).value = xlsxDate(rec.date);
+    if (rec.item) ex.getCell(r, col('Item')).value = rec.item;
+    if (rec.category) ex.getCell(r, col('Category')).value = rec.category;
+    if (rec.amount != null) ex.getCell(r, col('Amount')).value = Number(rec.amount);
+    if (rec.whoPaid) ex.getCell(r, col('Who paid')).value = rec.whoPaid;
+    ex.getCell(r, col('How to split')).value = rec.split || 'Equal';
+    ex.getCell(r, col('Currency')).value = rec.currency || cur;
+    ex.getCell(r, col('FX Rate')).value = rec.rate || 1;
+    if (rec.details) ex.getCell(r, col('Split details')).value = rec.details;
+  }
+
+  const rng = name => `${String.fromCharCode(64 + col(name))}${EXP_XLSX_HEAD_ROW + 1}:${String.fromCharCode(64 + col(name))}${last}`;
+  const pick = (name, formulaRef, prompt) => ex.dataValidations.add(rng(name), { type: 'list', allowBlank: true, formulae: [formulaRef], showErrorMessage: false, showInputMessage: true, promptTitle: name, prompt });
+  pick('Date', listRef(3, dates.length), 'Pick a trip date or type YYYY-MM-DD.');
+  pick('Category', listRef(0, EXPENSE_CATS.length), 'Pick an expense category from the existing app categories.');
+  pick('Who paid', memberRef, 'Pick a member from "Members & Info", or type multiple payers like "You: 300, Partner: 200".');
+  pick('How to split', listRef(1, EXP_XLSX_MODES.length), 'Equal (default), Exact, Percent, or Shares.');
+  pick('Currency', listRef(2, curList.length), `Bill currency (defaults to ${cur}).`);
+  ex.autoFilter = { from: { row: EXP_XLSX_HEAD_ROW, column: 1 }, to: { row: last, column: n } };
+
+  /* ----- How to fill ----- */
+  help.columns = [18, 56, 34].map(width => ({ width }));
+  xlsxTitleBar(help, 3, 'How to fill the Expenses sheet', 'Trips');
+  help.getCell('A3').value = 'Works the same in Excel, Numbers and Google Sheets. This sheet is not imported.'; help.getCell('A3').font = xlFont({ color: { argb: XL.mute } });
+  xlsxHeadRow(help, 5, ['Column', 'What to put', 'Example'], 1, () => XL.green);
+  const doc = [
+    ['Date', 'YYYY-MM-DD (or pick from the trip dates dropdown). Links the expense to that trip day.', start],
+    ['Item', 'Short description of the expense.', 'Kobe beef lunch'],
+    ['Category', `Pick from the dropdown: ${EXPENSE_CATS.join(', ')}.`, 'Food'],
+    ['Amount', 'Bill amount in the bill currency (numbers only, no currency symbol).', '18000'],
+    ['Who paid', 'Pick a member from "Members & Info". For multiple payers, type "Name: amount" pairs separated by commas.', 'You  or  You: 300, Partner: 200'],
+    ['How to split', 'Equal (default), Exact, Percent, or Shares.', 'Equal'],
+    ['Converted', `Auto-calculated (${cur}) = Amount × FX Rate. Nothing to type.`, '=ROUND(D6*I6,2)'],
+    ['Currency', `Optional bill currency. Leave blank for trip currency (${cur}).`, 'JPY'],
+    ['FX Rate', `Optional exchange rate (1 bill unit = X ${cur}). Leave blank or 1 when using ${cur}.`, '0.052'],
+    ['Split details', 'Optional. Leave blank for Equal across all members. For subset equal: "You, Partner". For Exact / Percent / Shares: "You: 60%, Partner: 40%" or "You: 2, Partner: 1".', 'You: 60%, Partner: 40%']
+  ];
+  const hrow = (r, vals, i) => vals.forEach((v, c) => {
+    const cell = help.getCell(r, c + 1); cell.value = v; cell.font = xlFont({ bold: c === 0 });
+    cell.border = xlBorder(); cell.alignment = { vertical: 'top', wrapText: true }; if (i % 2) cell.fill = xlFill(XL.band);
+  });
+  doc.forEach((v, i) => hrow(6 + i, v, i));
+  const sRow = 8 + doc.length;
+  help.getCell(sRow, 1).value = 'Steps'; help.getCell(sRow, 1).font = xlFont({ size: 11, bold: true });
+  [
+    'Add or edit your trip members once on the "Members & Info" sheet (rows 6–35).',
+    'Fill in the Expenses sheet (keep row 5 headers as they are).',
+    'Excel / Numbers: save as .xlsx.   Google Sheets: File → Download → Microsoft Excel (.xlsx).',
+    'In Trips: Expenses → Import / template → Choose file, review the preview, and confirm.'
+  ].forEach((x, i) => { const cell = help.getCell(sRow + 1 + i, 1); cell.value = `${i + 1}. ${x}`; cell.font = xlFont(); });
+
+  return wb;
+}
+
+async function expXlsxReadGrid(ExcelJS, buf) {
+  const wb = new ExcelJS.Workbook(); await wb.xlsx.load(buf);
+  const members = [];
+  const mi = wb.getWorksheet('Members & Info');
+  if (mi) {
+    for (let r = EXP_MEMBER_ROW0; r < EXP_MEMBER_ROW0 + EXP_MEMBER_MAX; r++) {
+      const name = xlsxCellText(mi.getCell(r, 1).value).trim();
+      if (name && !members.some(m => m.toLowerCase() === name.toLowerCase())) members.push(name);
+    }
+  }
+  let pick = null;
+  for (const ws of [...wb.worksheets].sort((a, b) => (b.name === 'Expenses') - (a.name === 'Expenses'))) {
+    for (let r = 1; r <= Math.min(15, ws.rowCount) && !pick; r++) {
+      const heads = [];
+      ws.getRow(r).eachCell({ includeEmpty: false }, (c, ci) => { const h = expHeadOf(xlsxCellText(c.value)); if (h) heads[ci] = xlsxCellText(c.value).trim(); });
+      if (heads.filter(Boolean).length >= 3) pick = { ws, r, heads };
+    }
+    if (pick) break;
+  }
+  if (!pick) throw Error('Header row not recognised. Use the Expenses template columns.');
+  const { ws, r: hr, heads } = pick, cols = heads.map((h, ci) => h ? ci : 0).filter(Boolean), grid = [cols.map(ci => heads[ci])];
+  for (let r = hr + 1; r <= ws.rowCount; r++) {
+    const row = ws.getRow(r), vals = cols.map(ci => {
+      const h = expHeadOf(heads[ci]);
+      return xlsxCellText(row.getCell(ci).value, h === 'Date' ? 'Date' : '').trim();
+    });
+    if (vals.some(x => x)) grid.push(vals);
+  }
+  if (grid.length < 2) throw Error('The file has no expense rows.');
+  return { grid, members };
+}
+
+async function expXlsxExport(tr) {
+  if (!tr.expenses.length) return toast('Nothing to export yet.');
+  toast('Building Excel…');
+  try {
+    await xlsxLoad();
+    const wb = expXlsxBuild(window.ExcelJS, tr), buf = await wb.xlsx.writeBuffer();
+    await saveFile(`${slug(tr.name)}-expenses.xlsx`, new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    toast(`${t('Exported')} ${tr.expenses.length} ${t('expenses')}`);
+  } catch (e) { toast(e.message || 'Export failed.'); }
+}
+
+async function expXlsxTemplateDownload(tr, sample = false) {
+  toast('Building Excel…');
+  try {
+    await xlsxLoad();
+    const buf = await expXlsxBuild(window.ExcelJS, tr, new Date(), sample ? 'sample' : 'blank').xlsx.writeBuffer();
+    await saveFile(`${slug(tr.name)}-expenses-${sample ? 'sample' : 'template'}.xlsx`, new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  } catch (e) { toast(e.message || 'Export failed.'); }
+}
+
+async function expXlsxReadFile(f) {
+  if (f.size > 8e6) throw Error('File is too large.');
+  await xlsxLoad();
+  return expXlsxReadGrid(window.ExcelJS, await f.arrayBuffer());
+}
