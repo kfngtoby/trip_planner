@@ -1,6 +1,7 @@
 'use strict';
-/* Map double-tap-hold-drag zoom/dezoom, planned-vs-backup spot separation,
-   Find Nearby backup surfacing, unused spot cleanup, and touch/render speedups. */
+/* Map double-tap-hold-drag GPU zoom/dezoom (Leaflet _animateZoom pipeline),
+   planned-vs-backup spot separation, Find Nearby backup surfacing,
+   unused spot cleanup, and touch/render speedups. */
 
 /* 1. Keep seed-research.js spots strictly as Backup spots (never inject optional items/days into Days tab). */
 (function sanitizeResearchPatches() {
@@ -78,9 +79,8 @@ if (typeof allCatalog === 'function') {
   };
 }
 
-/* 4. One-handed double-tap + hold + drag zoom/dezoom on Overview map (Google/Apple Maps style).
-      Normal panning stays 100% passive; non-passive touchmove is attached ONLY during active holdZoom
-      and zoom updates are coalesced via requestAnimationFrame. */
+/* 4. One-handed double-tap + hold + drag zoom/dezoom using Leaflet's native GPU _animateZoom pipeline.
+      Tiles and marker pins scale smoothly together without going blank; final tiles load once on release. */
 function attachMapDoubleTapZoom(map) {
   const el = map && map.getContainer ? map.getContainer() : null;
   if (!el || el.dataset.dtZoomWired) return;
@@ -102,10 +102,37 @@ function attachMapDoubleTapZoom(map) {
   });
 
   let firstTapStart = 0, firstTapEnd = 0, firstTapX = 0, firstTapY = 0, firstTapMoved = false;
-  let holdZoom = false, holdDragged = false, holdStartY = 0, holdStartZoom = 0, holdAnchor = null;
-  let savedZoomSnap = map.options.zoomSnap ?? 1;
-  let pendingZoom = null, rafId = 0;
+  let holdZoom = false, holdDragged = false, zoomStarted = false;
+  let holdStartY = 0, holdStartZoom = 0, holdStartCenter = null, holdPoint = null, holdAnchor = null;
+  let lastCenter = null, lastZoom = null, pendingZoom = null, rafId = 0;
   let twoFingerStart = 0, twoFingerMoved = false;
+
+  const computeCenter = zoom => {
+    const scale = map.getZoomScale(zoom, holdStartZoom);
+    const viewHalf = map.getSize().divideBy(2);
+    const offset = holdPoint.subtract(viewHalf).multiplyBy(1 - 1 / scale);
+    const px = map.project(holdStartCenter, holdStartZoom).add(offset);
+    return map.unproject(px, holdStartZoom);
+  };
+
+  const applyFrame = () => {
+    rafId = 0;
+    if (!holdZoom || pendingZoom === null || !holdStartCenter || !holdPoint) return;
+    const targetZoom = pendingZoom;
+    const targetCenter = computeCenter(targetZoom);
+    lastCenter = targetCenter;
+    lastZoom = targetZoom;
+    if (typeof map._animateZoom === 'function') {
+      if (!zoomStarted) {
+        zoomStarted = true;
+        if (typeof map._stop === 'function') map._stop();
+        if (typeof map._moveStart === 'function') map._moveStart(true, false);
+      }
+      map._animateZoom(targetCenter, targetZoom, false, true);
+    } else {
+      map.setView(targetCenter, targetZoom, { animate: false });
+    }
+  };
 
   const onHoldMove = e => {
     if (!holdZoom || e.touches.length !== 1) return;
@@ -114,14 +141,7 @@ function attachMapDoubleTapZoom(map) {
       holdDragged = true;
       e.preventDefault();
       pendingZoom = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), holdStartZoom + dy / 80));
-      if (!rafId) {
-        rafId = requestAnimationFrame(() => {
-          rafId = 0;
-          if (holdZoom && pendingZoom !== null && holdAnchor) {
-            map.setZoomAround(holdAnchor, pendingZoom, { animate: false });
-          }
-        });
-      }
+      if (!rafId) rafId = requestAnimationFrame(applyFrame);
     }
   };
 
@@ -130,15 +150,27 @@ function attachMapDoubleTapZoom(map) {
     el.removeEventListener('touchmove', onHoldMove);
     if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
     const anchor = holdAnchor;
+    const wasStarted = zoomStarted;
+    const wasDragged = holdDragged;
+    const commitCenter = lastCenter;
+    const commitZoom = lastZoom;
     holdZoom = false;
+    zoomStarted = false;
+    holdDragged = false;
     pendingZoom = null;
-    map.options.zoomSnap = savedZoomSnap;
+    holdAnchor = null;
+    holdStartCenter = null;
+    holdPoint = null;
+    lastCenter = null;
+    lastZoom = null;
     if (map.dragging && !map.dragging.enabled()) map.dragging.enable();
-    if (doQuickZoom && !holdDragged && anchor) {
+
+    if (wasStarted && commitCenter && commitZoom !== null && typeof map._animateZoom === 'function') {
+      const finalZoom = typeof map._limitZoom === 'function' ? map._limitZoom(commitZoom) : Math.round(commitZoom);
+      map._animateZoom(commitCenter, finalZoom, true, map.options.zoomSnap);
+    } else if (doQuickZoom && !wasDragged && anchor) {
       map.setZoomAround(anchor, Math.min(map.getMaxZoom(), map.getZoom() + 1));
     }
-    holdDragged = false;
-    holdAnchor = null;
   };
 
   el.addEventListener('touchstart', e => {
@@ -161,11 +193,13 @@ function attachMapDoubleTapZoom(map) {
       firstTapEnd = 0;
       holdZoom = true;
       holdDragged = false;
+      zoomStarted = false;
       holdStartY = t.clientY;
       holdStartZoom = map.getZoom();
-      savedZoomSnap = map.options.zoomSnap ?? 1;
-      map.options.zoomSnap = 0;
+      holdStartCenter = map.getCenter();
       const rect = el.getBoundingClientRect();
+      const lf = window.L;
+      holdPoint = lf ? lf.point(t.clientX - rect.left, t.clientY - rect.top) : null;
       holdAnchor = map.containerPointToLatLng([t.clientX - rect.left, t.clientY - rect.top]);
       if (map.dragging && map.dragging.enabled()) map.dragging.disable();
       el.addEventListener('touchmove', onHoldMove, { passive: false });
