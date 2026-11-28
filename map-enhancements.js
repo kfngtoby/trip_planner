@@ -1,6 +1,6 @@
 'use strict';
 /* Low-CPU WebGL MapLibre GL JS + OpenFreeMap vector Overview engine,
-   GPU Retina category-icon sprites, Slowpoke map tile preloader with progress bar,
+   GPU Retina category-icon sprites, automatic Slowpoke map tile preloader with progress bar,
    zero-lag Day slider, dirty-flagged persistent tab panels, lazy Leaflet loader,
    one-handed GPU zoom, and touch speedups. */
 
@@ -148,8 +148,8 @@ if (typeof saveDb === 'function') {
   };
 }
 
-/* 6. Low-CPU Map Tile Preloader (caches OpenFreeMap vector tiles z=11..14 for all trip spots). */
-let preloadingMap = false;
+/* 6. Automatic Low-CPU Map Tile Preloader (caches OpenFreeMap vector tiles z=11..14 on first load). */
+let preloadingMap = false, autoPreloadedTripId = null;
 function lonLatToTile(lon, lat, z) {
   const n = 1 << z;
   const x = Math.floor(((lon + 180) / 360) * n);
@@ -158,7 +158,8 @@ function lonLatToTile(lon, lat, z) {
   return [x, y];
 }
 
-async function preloadTripTiles() {
+async function preloadTripTiles(opts = {}) {
+  const silent = !!opts.silent;
   if (preloadingMap) return;
   const btn = $('#preload-map'), fill = btn?.querySelector('.pl-fill');
   const tr = trip();
@@ -214,11 +215,15 @@ async function preloadTripTiles() {
     fill.style.width = '100%';
     btn.classList.remove('loading');
     btn.classList.add('done');
-    toast(typeof discoveryLabel === 'function' ? discoveryLabel(`Preloaded ${total} map tiles ✓`, `已預載 ${total} 個地圖區塊 ✓`) : `Preloaded ${total} map tiles ✓`);
+    if (!silent) {
+      toast(typeof discoveryLabel === 'function' ? discoveryLabel(`Preloaded ${total} map tiles ✓`, `已預載 ${total} 個地圖區塊 ✓`) : `Preloaded ${total} map tiles ✓`);
+    }
   } catch {
     fill.style.width = '0%';
     btn.classList.remove('loading');
-    toast(typeof discoveryLabel === 'function' ? discoveryLabel('Preload needs internet connection', '預載地圖需要網路連線') : 'Preload needs internet connection');
+    if (!silent) {
+      toast(typeof discoveryLabel === 'function' ? discoveryLabel('Preload needs internet connection', '預載地圖需要網路連線') : 'Preload needs internet connection');
+    }
   } finally {
     preloadingMap = false;
     btn.disabled = false;
@@ -670,7 +675,7 @@ window.renderMapTab = function() {
     const b = e.target.closest('[data-open-place]'); if (b) openSpot(b.dataset.openPlace);
   };
   $('#fit-map').onclick = () => fitMap();
-  $('#preload-map').onclick = preloadTripTiles;
+  $('#preload-map').onclick = () => preloadTripTiles({ silent: false });
   $('#locate').onclick = () => {
     if (!navigator.geolocation) { toast(t('Location unavailable')); return; }
     navigator.geolocation.getCurrentPosition(pos => {
@@ -724,6 +729,10 @@ window.renderMapTab = function() {
   glMap.on('style.load', () => {
     glEnsureLayers();
     glSyncSources(true);
+    if (autoPreloadedTripId !== tr.id) {
+      autoPreloadedTripId = tr.id;
+      setTimeout(() => preloadTripTiles({ silent: true }), 800);
+    }
   });
 
   attachGLDoubleTapZoom(glMap);

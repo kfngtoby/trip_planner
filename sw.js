@@ -1,6 +1,6 @@
 // Caches the app so it opens without signal (e.g. on a train in Japan).
-// Deploy: bump V here AND the ?v= ids in index.html (same value), e.g. with: sed -i 's/61-slowpoke-preload/NEW/g' sw.js index.html
-const V = '61-slowpoke-preload';
+// Deploy: bump V here AND the ?v= ids in index.html (same value), e.g. with: sed -i 's/62-auto-preload/NEW/g' sw.js index.html
+const V = '62-auto-preload';
 const VERSION = 'trips-v' + V;
 const q = f => f + '?v=' + V;
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', q('style.css'), q('ios.css'),
