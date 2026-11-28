@@ -1,5 +1,5 @@
 'use strict';
-/* Map double-tap zoom/dezoom, planned-vs-backup spot separation,
+/* Map double-tap-hold-drag zoom/dezoom, planned-vs-backup spot separation,
    Find Nearby backup surfacing, and one-click unused spot cleanup. */
 
 /* 1. Keep seed-research.js spots strictly as Backup spots (never inject optional items/days into Days tab). */
@@ -78,7 +78,10 @@ if (typeof allCatalog === 'function') {
   };
 }
 
-/* 4. Add double-tap zoom / two-finger tap dezoom on Overview map + "Clean unused" button. */
+/* 4. One-handed double-tap + hold + drag zoom/dezoom on Overview map (Google/Apple Maps style).
+      - Tap 1 (short tap) -> Tap 2 & hold -> slide DOWN to zoom in, slide UP to zoom out smoothly.
+      - Quick double-tap release (< 8px drag) -> discrete +1 zoom in.
+      - Two-finger tap (or Shift + double-click on desktop) -> discrete -1 zoom out. */
 function attachMapDoubleTapZoom(map) {
   const el = map && map.getContainer ? map.getContainer() : null;
   if (!el || el.dataset.dtZoomWired) return;
@@ -87,6 +90,7 @@ function attachMapDoubleTapZoom(map) {
 
   const isUiTarget = target => !!target.closest('.map-ctrls,.leaflet-control,.spot-card,.route-panel,.pin,button,a');
 
+  // Desktop double-click fallback
   el.addEventListener('dblclick', e => {
     if (isUiTarget(e.target)) return;
     e.preventDefault();
@@ -94,52 +98,112 @@ function attachMapDoubleTapZoom(map) {
     const ll = map.containerPointToLatLng(pt);
     if (e.shiftKey) {
       map.setZoomAround(ll, Math.max(map.getMinZoom(), map.getZoom() - 1));
-    } else if (map.getZoom() >= 17) {
-      map.setZoomAround(ll, Math.max(map.getMinZoom(), map.getZoom() - 2));
     } else {
       map.setZoomAround(ll, Math.min(map.getMaxZoom(), map.getZoom() + 1));
     }
   });
 
-  let lastTapTime = 0, lastTapX = 0, lastTapY = 0;
+  // Mobile touch state
+  let firstTapStart = 0, firstTapEnd = 0, firstTapX = 0, firstTapY = 0, firstTapMoved = false;
+  let holdZoom = false, holdDragged = false, holdStartY = 0, holdStartZoom = 0, holdAnchor = null;
+  let savedZoomSnap = map.options.zoomSnap ?? 1;
   let twoFingerStart = 0, twoFingerMoved = false;
+
+  const endHoldZoom = (doQuickZoom) => {
+    if (!holdZoom) return;
+    const anchor = holdAnchor;
+    holdZoom = false;
+    map.options.zoomSnap = savedZoomSnap;
+    if (map.dragging && !map.dragging.enabled()) map.dragging.enable();
+    if (doQuickZoom && !holdDragged && anchor) {
+      map.setZoomAround(anchor, Math.min(map.getMaxZoom(), map.getZoom() + 1));
+    }
+    holdDragged = false;
+    holdAnchor = null;
+  };
 
   el.addEventListener('touchstart', e => {
     if (isUiTarget(e.target)) return;
+    const now = Date.now();
     if (e.touches.length === 2) {
-      twoFingerStart = Date.now();
+      if (holdZoom) endHoldZoom(false);
+      twoFingerStart = now;
       twoFingerMoved = false;
-    } else if (e.touches.length === 1) {
-      twoFingerStart = 0;
+      firstTapEnd = 0;
+      return;
+    }
+    if (e.touches.length !== 1) return;
+    twoFingerStart = 0;
+    const t = e.touches[0];
+    const dt = now - firstTapEnd;
+    const dist = Math.hypot(t.clientX - firstTapX, t.clientY - firstTapY);
+
+    if (firstTapEnd && dt > 20 && dt < 340 && dist < 44) {
+      // Second tap of a double-tap: enter hold-zoom mode immediately
+      firstTapEnd = 0;
+      holdZoom = true;
+      holdDragged = false;
+      holdStartY = t.clientY;
+      holdStartZoom = map.getZoom();
+      savedZoomSnap = map.options.zoomSnap ?? 1;
+      map.options.zoomSnap = 0;
+      const rect = el.getBoundingClientRect();
+      holdAnchor = map.containerPointToLatLng([t.clientX - rect.left, t.clientY - rect.top]);
+      if (map.dragging && map.dragging.enabled()) map.dragging.disable();
+    } else {
+      firstTapStart = now;
+      firstTapX = t.clientX;
+      firstTapY = t.clientY;
+      firstTapMoved = false;
     }
   }, { passive: true });
 
   el.addEventListener('touchmove', e => {
-    if (e.touches.length >= 2) twoFingerMoved = true;
-  }, { passive: true });
+    if (e.touches.length >= 2) { twoFingerMoved = true; return; }
+    if (holdZoom && e.touches.length === 1) {
+      const t = e.touches[0];
+      const dy = t.clientY - holdStartY;
+      if (Math.abs(dy) > 8) {
+        holdDragged = true;
+        e.preventDefault();
+        const target = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), holdStartZoom + dy / 80));
+        map.setZoomAround(holdAnchor, target, { animate: false });
+      }
+      return;
+    }
+    if (e.touches.length === 1 && firstTapStart) {
+      const t = e.touches[0];
+      if (Math.hypot(t.clientX - firstTapX, t.clientY - firstTapY) > 14) firstTapMoved = true;
+    }
+  }, { passive: false });
 
   el.addEventListener('touchend', e => {
     if (isUiTarget(e.target)) return;
     const now = Date.now();
+    if (holdZoom && e.touches.length === 0) {
+      endHoldZoom(true);
+      return;
+    }
     if (twoFingerStart && !twoFingerMoved && e.touches.length === 0 && (now - twoFingerStart) < 300) {
       twoFingerStart = 0;
       map.setZoom(Math.max(map.getMinZoom(), map.getZoom() - 1));
       return;
     }
-    if (e.changedTouches.length === 1 && e.touches.length === 0) {
-      const t = e.changedTouches[0];
-      const dt = now - lastTapTime;
-      const dist = Math.hypot(t.clientX - lastTapX, t.clientY - lastTapY);
-      if (dt > 40 && dt < 320 && dist < 42) {
-        lastTapTime = 0;
-        const rect = el.getBoundingClientRect();
-        const ll = map.containerPointToLatLng([t.clientX - rect.left, t.clientY - rect.top]);
-        if (map.getZoom() >= 17) map.setZoomAround(ll, Math.max(map.getMinZoom(), map.getZoom() - 2));
-        else map.setZoomAround(ll, Math.min(map.getMaxZoom(), map.getZoom() + 1));
+    if (e.changedTouches.length === 1 && e.touches.length === 0 && firstTapStart) {
+      if (!firstTapMoved && (now - firstTapStart) < 280) {
+        firstTapEnd = now;
       } else {
-        lastTapTime = now; lastTapX = t.clientX; lastTapY = t.clientY;
+        firstTapEnd = 0;
       }
+      firstTapStart = 0;
     }
+  }, { passive: true });
+
+  el.addEventListener('touchcancel', () => {
+    endHoldZoom(false);
+    firstTapStart = 0;
+    firstTapEnd = 0;
+    twoFingerStart = 0;
   }, { passive: true });
 }
 
