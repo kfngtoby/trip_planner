@@ -1,6 +1,6 @@
 'use strict';
 /* Map double-tap-hold-drag zoom/dezoom, planned-vs-backup spot separation,
-   Find Nearby backup surfacing, and one-click unused spot cleanup. */
+   Find Nearby backup surfacing, unused spot cleanup, and touch/render speedups. */
 
 /* 1. Keep seed-research.js spots strictly as Backup spots (never inject optional items/days into Days tab). */
 (function sanitizeResearchPatches() {
@@ -79,9 +79,8 @@ if (typeof allCatalog === 'function') {
 }
 
 /* 4. One-handed double-tap + hold + drag zoom/dezoom on Overview map (Google/Apple Maps style).
-      - Tap 1 (short tap) -> Tap 2 & hold -> slide DOWN to zoom in, slide UP to zoom out smoothly.
-      - Quick double-tap release (< 8px drag) -> discrete +1 zoom in.
-      - Two-finger tap (or Shift + double-click on desktop) -> discrete -1 zoom out. */
+      Normal panning stays 100% passive; non-passive touchmove is attached ONLY during active holdZoom
+      and zoom updates are coalesced via requestAnimationFrame. */
 function attachMapDoubleTapZoom(map) {
   const el = map && map.getContainer ? map.getContainer() : null;
   if (!el || el.dataset.dtZoomWired) return;
@@ -90,7 +89,6 @@ function attachMapDoubleTapZoom(map) {
 
   const isUiTarget = target => !!target.closest('.map-ctrls,.leaflet-control,.spot-card,.route-panel,.pin,button,a');
 
-  // Desktop double-click fallback
   el.addEventListener('dblclick', e => {
     if (isUiTarget(e.target)) return;
     e.preventDefault();
@@ -103,16 +101,37 @@ function attachMapDoubleTapZoom(map) {
     }
   });
 
-  // Mobile touch state
   let firstTapStart = 0, firstTapEnd = 0, firstTapX = 0, firstTapY = 0, firstTapMoved = false;
   let holdZoom = false, holdDragged = false, holdStartY = 0, holdStartZoom = 0, holdAnchor = null;
   let savedZoomSnap = map.options.zoomSnap ?? 1;
+  let pendingZoom = null, rafId = 0;
   let twoFingerStart = 0, twoFingerMoved = false;
 
-  const endHoldZoom = (doQuickZoom) => {
+  const onHoldMove = e => {
+    if (!holdZoom || e.touches.length !== 1) return;
+    const dy = e.touches[0].clientY - holdStartY;
+    if (Math.abs(dy) > 8) {
+      holdDragged = true;
+      e.preventDefault();
+      pendingZoom = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), holdStartZoom + dy / 80));
+      if (!rafId) {
+        rafId = requestAnimationFrame(() => {
+          rafId = 0;
+          if (holdZoom && pendingZoom !== null && holdAnchor) {
+            map.setZoomAround(holdAnchor, pendingZoom, { animate: false });
+          }
+        });
+      }
+    }
+  };
+
+  const endHoldZoom = doQuickZoom => {
     if (!holdZoom) return;
+    el.removeEventListener('touchmove', onHoldMove);
+    if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
     const anchor = holdAnchor;
     holdZoom = false;
+    pendingZoom = null;
     map.options.zoomSnap = savedZoomSnap;
     if (map.dragging && !map.dragging.enabled()) map.dragging.enable();
     if (doQuickZoom && !holdDragged && anchor) {
@@ -139,7 +158,6 @@ function attachMapDoubleTapZoom(map) {
     const dist = Math.hypot(t.clientX - firstTapX, t.clientY - firstTapY);
 
     if (firstTapEnd && dt > 20 && dt < 340 && dist < 44) {
-      // Second tap of a double-tap: enter hold-zoom mode immediately
       firstTapEnd = 0;
       holdZoom = true;
       holdDragged = false;
@@ -150,6 +168,7 @@ function attachMapDoubleTapZoom(map) {
       const rect = el.getBoundingClientRect();
       holdAnchor = map.containerPointToLatLng([t.clientX - rect.left, t.clientY - rect.top]);
       if (map.dragging && map.dragging.enabled()) map.dragging.disable();
+      el.addEventListener('touchmove', onHoldMove, { passive: false });
     } else {
       firstTapStart = now;
       firstTapX = t.clientX;
@@ -160,22 +179,11 @@ function attachMapDoubleTapZoom(map) {
 
   el.addEventListener('touchmove', e => {
     if (e.touches.length >= 2) { twoFingerMoved = true; return; }
-    if (holdZoom && e.touches.length === 1) {
-      const t = e.touches[0];
-      const dy = t.clientY - holdStartY;
-      if (Math.abs(dy) > 8) {
-        holdDragged = true;
-        e.preventDefault();
-        const target = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), holdStartZoom + dy / 80));
-        map.setZoomAround(holdAnchor, target, { animate: false });
-      }
-      return;
-    }
-    if (e.touches.length === 1 && firstTapStart) {
+    if (!holdZoom && e.touches.length === 1 && firstTapStart) {
       const t = e.touches[0];
       if (Math.hypot(t.clientX - firstTapX, t.clientY - firstTapY) > 14) firstTapMoved = true;
     }
-  }, { passive: false });
+  }, { passive: true });
 
   el.addEventListener('touchend', e => {
     if (isUiTarget(e.target)) return;
@@ -190,11 +198,8 @@ function attachMapDoubleTapZoom(map) {
       return;
     }
     if (e.changedTouches.length === 1 && e.touches.length === 0 && firstTapStart) {
-      if (!firstTapMoved && (now - firstTapStart) < 280) {
-        firstTapEnd = now;
-      } else {
-        firstTapEnd = 0;
-      }
+      if (!firstTapMoved && (now - firstTapStart) < 280) firstTapEnd = now;
+      else firstTapEnd = 0;
       firstTapStart = 0;
     }
   }, { passive: true });
@@ -206,6 +211,39 @@ function attachMapDoubleTapZoom(map) {
     twoFingerStart = 0;
   }, { passive: true });
 }
+
+/* 5. Instant day accordion toggle (avoids full #view innerHTML rebuild on every tap)
+      + instant tab-bar highlight on touchstart. */
+(function installTouchSpeedups() {
+  document.addEventListener('touchstart', e => {
+    const tab = e.target.closest?.('.tabbar a');
+    if (!tab) return;
+    const bar = tab.closest('.tabbar');
+    bar?.querySelectorAll('a[aria-selected="true"]').forEach(a => a.setAttribute('aria-selected', 'false'));
+    tab.setAttribute('aria-selected', 'true');
+  }, { passive: true });
+
+  document.addEventListener('click', e => {
+    const btn = e.target.closest?.('[data-toggle-day]');
+    if (!btn || typeof openSet !== 'function' || typeof trip !== 'function') return;
+    const id = btn.dataset.toggleDay;
+    const sec = document.getElementById('day-' + id);
+    const body = document.getElementById('body-' + id);
+    if (!sec || !body) return;
+    e.stopImmediatePropagation();
+    const open = openSet();
+    const willOpen = !open.has(id);
+    if (willOpen) open.add(id); else open.delete(id);
+    sec.classList.toggle('open', willOpen);
+    btn.setAttribute('aria-expanded', String(willOpen));
+    body.hidden = !willOpen;
+    const tr = trip();
+    const exp = document.getElementById('expand-all');
+    const col = document.getElementById('collapse-all');
+    if (exp) exp.disabled = tr.days.length > 0 && tr.days.every(d => open.has(d.id));
+    if (col) col.disabled = open.size === 0;
+  }, true);
+})();
 
 function cleanUnusedSheet() {
   const tr = trip();
@@ -246,6 +284,15 @@ if (typeof renderMapTab === 'function') {
   window.renderMapTab = function() {
     origRenderMapTab();
     if (typeof lmap !== 'undefined' && lmap) attachMapDoubleTapZoom(lmap);
+    const inp = $('#place-search');
+    if (inp) {
+      let timer = 0;
+      inp.oninput = e => {
+        placeQuery = e.target.value;
+        clearTimeout(timer);
+        timer = setTimeout(() => refreshPlaces(false), 120);
+      };
+    }
   };
 }
 
