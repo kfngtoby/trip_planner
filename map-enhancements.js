@@ -1,7 +1,7 @@
 'use strict';
-/* Map double-tap-hold-drag GPU zoom/dezoom (Leaflet _animateZoom pipeline),
-   planned-vs-backup spot separation, Find Nearby backup surfacing,
-   unused spot cleanup, and touch/render speedups. */
+/* Persistent tab shell (keeps Leaflet map alive across tabs), GPU-friendly tiles,
+   one-handed double-tap-hold-drag GPU zoom/dezoom, planned-vs-backup separation,
+   Find Nearby backup surfacing, unused spot cleanup, and touch/render speedups. */
 
 /* 1. Keep seed-research.js spots strictly as Backup spots (never inject optional items/days into Days tab). */
 (function sanitizeResearchPatches() {
@@ -37,6 +37,16 @@
   }
 })();
 
+/* 2. Optimize Leaflet TileLayer defaults for smooth iOS WebKit panning & zooming. */
+(function optimizeLeafletTiles() {
+  const lf = window.L;
+  if (lf && lf.TileLayer && lf.TileLayer.prototype && lf.TileLayer.prototype.options) {
+    lf.TileLayer.prototype.options.updateWhenZooming = false;
+    lf.TileLayer.prototype.options.updateWhenIdle = true;
+    lf.TileLayer.prototype.options.keepBuffer = 4;
+  }
+})();
+
 function getUsedSpotIds(tr) {
   const used = new Set();
   (tr?.days || []).forEach(d => (d.items || []).forEach(it => { if (it.spotId) used.add(it.spotId); }));
@@ -48,7 +58,7 @@ function getUnusedPlannedSpots(tr) {
   return (tr?.spots || []).filter(s => !s.backup && !used.has(s.id));
 }
 
-/* 2. Hide backup spots from the main Overview map & list (they live in Find Nearby). */
+/* 3. Hide backup spots from the main Overview map & list (they live in Find Nearby). */
 if (typeof filteredSpots === 'function') {
   const origFilteredSpots = filteredSpots;
   window.filteredSpots = function(tr, ignoreCats = false) {
@@ -56,7 +66,7 @@ if (typeof filteredSpots === 'function') {
   };
 }
 
-/* 3. Surface all trip backup spots inside Find Nearby (discovery.js calls allCatalog()). */
+/* 4. Surface all trip backup spots inside Find Nearby (discovery.js calls allCatalog()). */
 if (typeof allCatalog === 'function') {
   const origAllCatalog = allCatalog;
   window.allCatalog = function() {
@@ -79,7 +89,7 @@ if (typeof allCatalog === 'function') {
   };
 }
 
-/* 4. One-handed double-tap + hold + drag zoom/dezoom using Leaflet's native GPU _animateZoom pipeline.
+/* 5. One-handed double-tap + hold + drag zoom/dezoom using Leaflet's native GPU _animateZoom pipeline.
       Tiles and marker pins scale smoothly together without going blank; final tiles load once on release. */
 function attachMapDoubleTapZoom(map) {
   const el = map && map.getContainer ? map.getContainer() : null;
@@ -246,8 +256,7 @@ function attachMapDoubleTapZoom(map) {
   }, { passive: true });
 }
 
-/* 5. Instant day accordion toggle (avoids full #view innerHTML rebuild on every tap)
-      + instant tab-bar highlight on touchstart. */
+/* 6. Instant day accordion toggle + instant tab-bar highlight on touchstart. */
 (function installTouchSpeedups() {
   document.addEventListener('touchstart', e => {
     const tab = e.target.closest?.('.tabbar a');
@@ -278,6 +287,93 @@ function attachMapDoubleTapZoom(map) {
     if (col) col.disabled = open.size === 0;
   }, true);
 })();
+
+/* 7. Persistent tab panels: keep Overview map mounted across tab switches (instant < 16ms switch). */
+let mountedTripId = null, mapMounted = false;
+if (typeof destroyMap === 'function') {
+  const origDestroyMap = destroyMap;
+  window.destroyMap = function(force = false) {
+    if (!force && mountedTripId && $('#trip-panels')) {
+      const [, view, id] = location.hash.split('/');
+      if (view === 'trip' && id === mountedTripId) return;
+    }
+    mountedTripId = null;
+    mapMounted = false;
+    origDestroyMap();
+  };
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  if (typeof renderTrip !== 'function') return;
+
+  const activatePanel = tab => {
+    const wrap = $('#trip-panels');
+    if (!wrap) return null;
+    let active = null;
+    wrap.querySelectorAll('[data-panel]').forEach(p => {
+      const on = p.dataset.panel === tab;
+      p.hidden = !on;
+      if (on) { p.id = 'view'; active = p; }
+      else if (p.id === 'view') p.removeAttribute('id');
+    });
+    $$('.tabbar a').forEach(a => {
+      const k = a.getAttribute('href')?.split('/').pop();
+      a.setAttribute('aria-selected', String(k === tab));
+    });
+    return active;
+  };
+
+  window.renderTrip = function() {
+    const tr = trip();
+    if (!tr) return;
+    document.title = tr.name;
+    const needShell = mountedTripId !== tr.id || !$('#trip-panels');
+    if (needShell) {
+      if (typeof destroyMap === 'function') destroyMap(true);
+      mountedTripId = tr.id;
+      mapMounted = false;
+      $('#app').innerHTML = `
+        <header class="bar trip-bar">
+          <a class="icon-btn back" href="#/" aria-label="All trips">‹</a>
+          <div class="title-wrap" id="title-wrap"><button class="bar-title trip-title user-text" id="trip-title" aria-label="Rename trip">${esc(tr.name)}</button></div>
+          <button class="icon-btn" data-trip-menu="${esc(tr.id)}" aria-label="Trip options">⋯</button>
+          ${typeof langToggle === 'function' ? langToggle() : ''}
+        </header>
+        <div id="trip-panels">
+          <main data-panel="map" class="view view-map" hidden></main>
+          <main data-panel="days" class="view view-days" hidden></main>
+          <main data-panel="expenses" class="view view-expenses" hidden></main>
+        </div>
+        <nav class="tabbar" role="tablist" aria-label="Trip views">
+          ${[['map', 'Overview', '◎'], ['days', 'Days', '☰'], ['expenses', 'Expenses', '¥']].map(([k, label, ico]) =>
+            `<a role="tab" href="#/trip/${esc(tr.id)}/${k}" aria-selected="${current.tab === k}"><span aria-hidden="true" class="tab-ico">${ico}</span><span>${label}</span></a>`).join('')}
+        </nav>`;
+      $('#trip-title').onclick = inlineRename;
+    }
+
+    activatePanel(current.tab);
+
+    if (current.tab === 'map') {
+      if (mapMounted && typeof lmap !== 'undefined' && lmap) {
+        requestAnimationFrame(() => {
+          if (typeof lmap !== 'undefined' && lmap) lmap.invalidateSize(false);
+          if (typeof refreshPlaces === 'function') refreshPlaces(false);
+          if (typeof pendingFocus !== 'undefined' && pendingFocus) {
+            const id = pendingFocus; pendingFocus = null;
+            if (typeof openSpot === 'function') setTimeout(() => openSpot(id), 40);
+          }
+        });
+      } else {
+        renderMapTab();
+        mapMounted = true;
+      }
+    } else if (current.tab === 'days') {
+      renderDaysTab();
+    } else if (current.tab === 'expenses') {
+      renderExpensesTab();
+    }
+  };
+});
 
 function cleanUnusedSheet() {
   const tr = trip();

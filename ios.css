@@ -2,6 +2,9 @@
 html,body{overscroll-behavior-y:none}
 a,button,.btn,label,summary,[role="tab"],[role="button"],.day-head,.chip,.trip-link,.back,.pill{touch-action:manipulation}
 #map{touch-action:none}
+/* Keep Leaflet tiles on iOS WebKit GPU compositor (no per-frame software CSS filter rasterization) */
+.leaflet-tile-pane,.base-muted{filter:none!important;-webkit-filter:none!important}
+.base-muted{opacity:.88}
 button,.btn,.tabbar a,.day-head,.stop,.day-chips button,.cat-chip{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 /* Avoid GPU-heavy stacked backdrop-filter blurs on mobile scroll/touch */
 .bar,.view-days .toolbar{background:var(--paper)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
