@@ -1,6 +1,6 @@
 // Caches the app so it opens without signal (e.g. on a train in Japan).
-// Deploy: bump V here AND the ?v= ids in index.html (same value), e.g. with: sed -i 's/59-maplibre-webgl/NEW/g' sw.js index.html
-const V = '59-maplibre-webgl';
+// Deploy: bump V here AND the ?v= ids in index.html (same value), e.g. with: sed -i 's/60-low-cpu-gl-icons/NEW/g' sw.js index.html
+const V = '60-low-cpu-gl-icons';
 const VERSION = 'trips-v' + V;
 const q = f => f + '?v=' + V;
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', q('style.css'), q('ios.css'),
@@ -8,9 +8,7 @@ const SHELL = ['./', 'index.html', 'manifest.webmanifest', q('style.css'), q('io
     'firebase-config', 'sync', 'ai', 'discovery', 'csv', 'xlsx', 'map-enhancements', 'app', 'slowpoke'].map(n => q(n + '.js'))];
 const OPTIONAL = ['slowpoke.png', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png',
   'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js',
-  'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css',
-  'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'];
+  'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(async c => { await Promise.all(SHELL.map(u => c.add(new Request(u, { cache: 'reload' })))); await Promise.allSettled(OPTIONAL.map(x => c.add(x))); }).then(() => self.skipWaiting()));

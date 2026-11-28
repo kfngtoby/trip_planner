@@ -1,7 +1,7 @@
 'use strict';
-/* WebGL MapLibre GL JS + OpenFreeMap vector Overview engine, persistent tab shell,
-   one-handed double-tap-hold-drag GPU zoom, planned-vs-backup separation,
-   Find Nearby backup surfacing, unused spot cleanup, and touch speedups. */
+/* Low-CPU WebGL MapLibre GL JS + OpenFreeMap vector Overview engine,
+   GPU Retina category-icon sprites, dirty-flagged persistent tab panels,
+   lazy Leaflet loader for Find Nearby, one-handed GPU zoom, and touch speedups. */
 
 const GL_STYLES = {
   light: 'https://tiles.openfreemap.org/styles/positron',
@@ -78,7 +78,32 @@ if (typeof allCatalog === 'function') {
   };
 }
 
-/* 3. Instant day accordion toggle + instant tab-bar highlight on touchstart. */
+/* 3. Lazy-load Leaflet ONLY if the user opens Find Nearby (saves 150KB parse on cold start). */
+let leafletLoading = null;
+function ensureLeaflet() {
+  if (window.L && typeof window.L.map === 'function') return Promise.resolve();
+  if (leafletLoading) return leafletLoading;
+  leafletLoading = new Promise(resolve => {
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+    document.head.appendChild(css);
+    const js = document.createElement('script');
+    js.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+    js.onload = resolve;
+    js.onerror = resolve;
+    document.head.appendChild(js);
+  });
+  return leafletLoading;
+}
+if (typeof discover === 'function') {
+  const origDiscover = discover;
+  window.discover = function(tr, dayId, mode) {
+    ensureLeaflet().then(() => origDiscover(tr, dayId, mode));
+  };
+}
+
+/* 4. Instant day accordion toggle + instant tab-bar highlight on touchstart. */
 (function installTouchSpeedups() {
   document.addEventListener('touchstart', e => {
     const tab = e.target.closest?.('.tabbar a');
@@ -110,8 +135,19 @@ if (typeof allCatalog === 'function') {
   }, true);
 })();
 
-/* 4. WebGL MapLibre GL JS Overview Map Engine (60-120fps vector tiles & GPU pins). */
+/* 5. Track data mutations so tab switches skip redundant DOM rebuilds (0% CPU spike). */
+const tabDirty = { map: true, days: true, expenses: true };
+if (typeof saveDb === 'function') {
+  const origSaveDb = saveDb;
+  window.saveDb = function(...args) {
+    tabDirty.map = tabDirty.days = tabDirty.expenses = true;
+    return origSaveDb.apply(this, args);
+  };
+}
+
+/* 6. Low-CPU WebGL MapLibre GL JS Overview Map Engine + GPU Retina Category Icon Sprites. */
 let glMap = null, glReady = false, glStyleKey = 'light', glUserPos = null;
+const glSpriteCache = new Map();
 const origRenderMapTab = typeof renderMapTab === 'function' ? renderMapTab : null;
 const origRefreshPlaces = typeof refreshPlaces === 'function' ? refreshPlaces : null;
 const origDestroyMap = typeof destroyMap === 'function' ? destroyMap : null;
@@ -127,20 +163,96 @@ function glGetStyleKey() {
   catch { return 'light'; }
 }
 
+function glDrawCircleBase(ctx, color, selected) {
+  ctx.clearRect(0, 0, 64, 64);
+  ctx.save();
+  if (selected) {
+    ctx.beginPath();
+    ctx.arc(32, 32, 30, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(10, 122, 92, 0.25)';
+    ctx.fill();
+  }
+  ctx.beginPath();
+  ctx.arc(32, 32, selected ? 23 : 21, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.lineWidth = selected ? 5 : 4;
+  ctx.strokeStyle = '#ffffff';
+  ctx.stroke();
+  ctx.restore();
+}
+
+function glEnsureRouteSprite(num) {
+  const id = 'rt-' + num;
+  if (!glMap || glMap.hasImage(id)) return id;
+  let imgData = glSpriteCache.get(id);
+  if (!imgData) {
+    const c = document.createElement('canvas');
+    c.width = 64; c.height = 64;
+    const ctx = c.getContext('2d');
+    glDrawCircleBase(ctx, '#0a7a5c', false);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 26px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(num), 32, 33);
+    imgData = ctx.getImageData(0, 0, 64, 64);
+    glSpriteCache.set(id, imgData);
+  }
+  glMap.addImage(id, imgData, { pixelRatio: 2 });
+  return id;
+}
+
+function glEnsurePinSprite(cat, color, selected) {
+  const id = `pin-${cat}-${color}-${selected ? 1 : 0}`;
+  if (!glMap) return id;
+  if (glMap.hasImage(id)) return id;
+  const cached = glSpriteCache.get(id);
+  if (cached) {
+    glMap.addImage(id, cached, { pixelRatio: 2 });
+    return id;
+  }
+  const c = document.createElement('canvas');
+  c.width = 64; c.height = 64;
+  const ctx = c.getContext('2d');
+  glDrawCircleBase(ctx, color, selected);
+  const baseData = ctx.getImageData(0, 0, 64, 64);
+  glMap.addImage(id, baseData, { pixelRatio: 2 });
+
+  if (typeof catIcon === 'function') {
+    const rawSvg = catIcon(cat, 24);
+    if (rawSvg && rawSvg.includes('<svg')) {
+      const svg = rawSvg.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg" style="color:#fff"');
+      const img = new Image();
+      img.onload = () => {
+        glDrawCircleBase(ctx, color, selected);
+        ctx.drawImage(img, 18, 18, 28, 28);
+        const finalData = ctx.getImageData(0, 0, 64, 64);
+        glSpriteCache.set(id, finalData);
+        if (glMap && glMap.hasImage(id)) glMap.updateImage(id, finalData);
+      };
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    }
+  }
+  return id;
+}
+
 function glSpotsGeoJSON(tr) {
   const list = filteredSpots(tr).filter(hasCoords);
   return {
     type: 'FeatureCollection',
     features: list.map(s => {
       const rIdx = routeMode ? routeSeq.indexOf(s.id) : -1;
+      const color = spotColor(tr, s) || '#0a7a5c';
+      const selected = s.id === activeSpotId;
+      const icon = rIdx >= 0 ? glEnsureRouteSprite(rIdx + 1) : glEnsurePinSprite(s.cat || 'other', color, selected);
       return {
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
         properties: {
           id: s.id,
-          color: spotColor(tr, s) || '#0a7a5c',
-          selected: s.id === activeSpotId ? 1 : 0,
-          inRoute: rIdx >= 0 ? 1 : 0
+          icon,
+          sortKey: selected ? 3 : rIdx >= 0 ? 2 : 1
         }
       };
     })
@@ -178,30 +290,22 @@ function glEnsureLayers() {
     glMap.addSource('trip-user', { type: 'geojson', data: glUserGeoJSON() });
     glMap.addLayer({
       id: 'trip-user-halo', type: 'circle', source: 'trip-user',
-      paint: { 'circle-radius': 16, 'circle-color': '#2563eb', 'circle-opacity': 0.2 }
+      paint: { 'circle-radius': 15, 'circle-color': '#2563eb', 'circle-opacity': 0.2 }
     });
     glMap.addLayer({
       id: 'trip-user-dot', type: 'circle', source: 'trip-user',
-      paint: { 'circle-radius': 6.5, 'circle-color': '#2563eb', 'circle-stroke-width': 2.5, 'circle-stroke-color': '#ffffff' }
+      paint: { 'circle-radius': 6, 'circle-color': '#2563eb', 'circle-stroke-width': 2.5, 'circle-stroke-color': '#ffffff' }
     });
   }
   if (!glMap.getSource('trip-spots')) {
     glMap.addSource('trip-spots', { type: 'geojson', data: glSpotsGeoJSON(tr) });
     glMap.addLayer({
-      id: 'trip-spots-ring', type: 'circle', source: 'trip-spots',
-      paint: {
-        'circle-radius': ['case', ['==', ['get', 'selected'], 1], 17, 0],
-        'circle-color': '#0a7a5c',
-        'circle-opacity': 0.25
-      }
-    });
-    glMap.addLayer({
-      id: 'trip-spots-circle', type: 'circle', source: 'trip-spots',
-      paint: {
-        'circle-radius': ['case', ['==', ['get', 'selected'], 1], 11.5, ['==', ['get', 'inRoute'], 1], 11, 8.5],
-        'circle-color': ['case', ['==', ['get', 'inRoute'], 1], '#0a7a5c', ['get', 'color']],
-        'circle-stroke-width': ['case', ['==', ['get', 'selected'], 1], 3, 2.2],
-        'circle-stroke-color': '#ffffff'
+      id: 'trip-spots-icons', type: 'symbol', source: 'trip-spots',
+      layout: {
+        'icon-image': ['get', 'icon'],
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'symbol-sort-key': ['get', 'sortKey']
       }
     });
   }
@@ -219,11 +323,11 @@ function glSyncSources(fit = false) {
   glMap.getSource('trip-user')?.setData(glUserGeoJSON());
   if (fit && data.features.length) {
     if (data.features.length === 1) {
-      glMap.easeTo({ center: data.features[0].geometry.coordinates, zoom: 14.5, duration: 220 });
+      glMap.easeTo({ center: data.features[0].geometry.coordinates, zoom: 14.5, duration: 200 });
     } else {
       const b = new maplibregl.LngLatBounds();
       data.features.forEach(f => b.extend(f.geometry.coordinates));
-      glMap.fitBounds(b, { padding: 44, maxZoom: 15, duration: 220 });
+      glMap.fitBounds(b, { padding: 44, maxZoom: 15, duration: 200 });
     }
   }
 }
@@ -264,7 +368,7 @@ function attachGLDoubleTapZoom(map) {
     holdZoom = false; holdDragged = false; pendingZoom = null; holdAnchor = null;
     map.dragPan.enable();
     if (doQuick && !dragged && anchor) {
-      map.zoomTo(Math.min(19, map.getZoom() + 1), { around: anchor, duration: 200 });
+      map.zoomTo(Math.min(19, map.getZoom() + 1), { around: anchor, duration: 180 });
     }
   };
 
@@ -304,7 +408,7 @@ function attachGLDoubleTapZoom(map) {
     if (holdZoom && e.touches.length === 0) { endHold(true); return; }
     if (twoFingerStart && !twoFingerMoved && e.touches.length === 0 && (now - twoFingerStart) < 300) {
       twoFingerStart = 0;
-      map.zoomTo(Math.max(2, map.getZoom() - 1), { duration: 200 });
+      map.zoomTo(Math.max(2, map.getZoom() - 1), { duration: 180 });
       return;
     }
     if (e.changedTouches.length === 1 && e.touches.length === 0 && firstTapStart) {
@@ -362,7 +466,7 @@ window.focusSpot = function(id, move = true) {
     if (!s || !hasCoords(s)) return;
     if (move) {
       const z = glMap.getZoom();
-      glMap.easeTo({ center: [s.lon, s.lat], zoom: z < 13.5 ? 14.5 : z, duration: 260 });
+      glMap.easeTo({ center: [s.lon, s.lat], zoom: z < 13.5 ? 14.5 : z, duration: 220 });
     }
     glShowSpotCard(id);
     return;
@@ -407,12 +511,13 @@ window.refreshPlaces = function(refit = false) {
   const ids = new Set(spots.map(s => s.id));
   if (activeSpotId && !ids.has(activeSpotId)) glHideSpotCard();
   else if (activeSpotId) glShowSpotCard(activeSpotId);
+  tabDirty.map = false;
 };
 
 window.renderMapTab = function() {
   const tr = trip();
   if (!tr || typeof maplibregl === 'undefined') {
-    if (origRenderMapTab) origRenderMapTab();
+    if (origRenderMapTab) ensureLeaflet().then(() => origRenderMapTab());
     return;
   }
   if (mapDay !== 'all' && mapDay !== 'none' && !tr.days.some(d => d.id === mapDay) && !(/^w\d+$/.test(mapDay) && +mapDay.slice(1) < weekCount(tr))) mapDay = 'all';
@@ -436,7 +541,7 @@ window.renderMapTab = function() {
   $('#place-search').oninput = e => {
     placeQuery = e.target.value;
     clearTimeout(sTimer);
-    sTimer = setTimeout(() => refreshPlaces(false), 100);
+    sTimer = setTimeout(() => refreshPlaces(false), 120);
   };
   renderWeekBar();
   $('#week-bar').onclick = e => {
@@ -451,7 +556,7 @@ window.renderMapTab = function() {
     updateSliderMarks();
     glSyncSources(false);
     clearTimeout(slTimer);
-    slTimer = setTimeout(() => refreshPlaces(false), 60);
+    slTimer = setTimeout(() => refreshPlaces(false), 80);
   };
   $('#week-bar').onchange = e => { if (e.target.id === 'day-range') fitMap(); };
   wireReco($('#fashion-guide'), tr);
@@ -481,7 +586,7 @@ window.renderMapTab = function() {
     navigator.geolocation.getCurrentPosition(pos => {
       glUserPos = { lat: pos.coords.latitude, lon: pos.coords.longitude };
       glSyncSources(false);
-      glMap?.easeTo({ center: [glUserPos.lon, glUserPos.lat], zoom: Math.max(glMap.getZoom(), 14.5), duration: 320 });
+      glMap?.easeTo({ center: [glUserPos.lon, glUserPos.lat], zoom: Math.max(glMap.getZoom(), 14.5), duration: 280 });
     }, () => toast(t('Location permission denied')), { enableHighAccuracy: true, timeout: 10000 });
   };
   $('#route-toggle').onclick = () => { routeMode = !routeMode; if (routeMode) glHideSpotCard(); updatePins(); renderRoutePanel(); };
@@ -508,11 +613,16 @@ window.renderMapTab = function() {
   const initSpots = filteredSpots(tr).filter(hasCoords);
   const initCenter = initSpots.length ? [initSpots[0].lon, initSpots[0].lat] : [134.2, 34.9];
 
+  /* Low-CPU / Low-GPU mobile WebGL config: cap pixelRatio at 2, no MSAA, no fade loop, lean tile cache. */
   glMap = new maplibregl.Map({
     container: 'map',
     style: GL_STYLES[glStyleKey],
     center: initCenter,
     zoom: 9,
+    pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+    antialias: false,
+    fadeDuration: 0,
+    maxTileCacheSize: 40,
     dragRotate: false,
     touchPitch: false,
     pitchWithRotate: false,
@@ -535,9 +645,9 @@ window.renderMapTab = function() {
       cb({ lat: e.lngLat.lat, lng: e.lngLat.lng });
       return;
     }
-    if (!glReady || !glMap.getLayer('trip-spots-circle')) return;
+    if (!glReady || !glMap.getLayer('trip-spots-icons')) return;
     const pad = 22;
-    const hits = glMap.queryRenderedFeatures([[e.point.x - pad, e.point.y - pad], [e.point.x + pad, e.point.y + pad]], { layers: ['trip-spots-circle'] });
+    const hits = glMap.queryRenderedFeatures([[e.point.x - pad, e.point.y - pad], [e.point.x + pad, e.point.y + pad]], { layers: ['trip-spots-icons'] });
     if (!hits.length) { glHideSpotCard(); return; }
     let best = hits[0], bestD = Infinity;
     for (const h of hits) {
@@ -560,18 +670,19 @@ window.renderMapTab = function() {
   };
 
   refreshPlaces(false);
-  if (pendingFocus) { const id = pendingFocus; pendingFocus = null; setTimeout(() => openSpot(id), 220); }
+  if (pendingFocus) { const id = pendingFocus; pendingFocus = null; setTimeout(() => openSpot(id), 200); }
 };
 
-/* 5. Persistent tab panels: keep WebGL MapLibre map alive across Overview/Days/Expenses. */
-let mountedTripId = null, mapMounted = false;
+/* 7. Dirty-flagged persistent tab panels: zero DOM rebuilds when switching unchanged tabs. */
+let mountedTripId = null, mountedTabs = { map: false, days: false, expenses: false };
 window.destroyMap = function(force = false) {
   if (!force && mountedTripId && $('#trip-panels')) {
     const [, view, id] = location.hash.split('/');
     if (view === 'trip' && id === mountedTripId) return;
   }
   mountedTripId = null;
-  mapMounted = false;
+  mountedTabs = { map: false, days: false, expenses: false };
+  tabDirty.map = tabDirty.days = tabDirty.expenses = true;
   if (glMap) { try { glMap.remove(); } catch {} glMap = null; glReady = false; }
   if (origDestroyMap) origDestroyMap();
 };
@@ -604,7 +715,8 @@ window.addEventListener('DOMContentLoaded', () => {
     if (needShell) {
       window.destroyMap(true);
       mountedTripId = tr.id;
-      mapMounted = false;
+      mountedTabs = { map: false, days: false, expenses: false };
+      tabDirty.map = tabDirty.days = tabDirty.expenses = true;
       $('#app').innerHTML = `
         <header class="bar trip-bar">
           <a class="icon-btn back" href="#/" aria-label="All trips">‹</a>
@@ -627,25 +739,34 @@ window.addEventListener('DOMContentLoaded', () => {
     activatePanel(current.tab);
 
     if (current.tab === 'map') {
-      if (mapMounted && glMap) {
+      if (mountedTabs.map && glMap) {
         requestAnimationFrame(() => {
           glMap?.resize();
-          refreshPlaces(false);
+          if (tabDirty.map) refreshPlaces(false);
           if (pendingFocus) { const id = pendingFocus; pendingFocus = null; openSpot(id); }
         });
       } else {
         renderMapTab();
-        mapMounted = true;
+        mountedTabs.map = true;
+        tabDirty.map = false;
       }
     } else if (current.tab === 'days') {
-      renderDaysTab();
+      if (!mountedTabs.days || tabDirty.days) {
+        renderDaysTab();
+        mountedTabs.days = true;
+        tabDirty.days = false;
+      }
     } else if (current.tab === 'expenses') {
-      renderExpensesTab();
+      if (!mountedTabs.expenses || tabDirty.expenses) {
+        renderExpensesTab();
+        mountedTabs.expenses = true;
+        tabDirty.expenses = false;
+      }
     }
   };
 });
 
-/* 6. Clean unused places sheet & legend button. */
+/* 8. Clean unused places sheet & legend button. */
 function cleanUnusedSheet() {
   const tr = trip();
   const unused = getUnusedPlannedSpots(tr);
