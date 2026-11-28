@@ -1,5 +1,6 @@
 /* iOS standalone PWA tuning */
 html,body{overscroll-behavior-y:none}
+#map{touch-action:none}
 button,.btn,.tabbar a,.day-head,.stop,.day-chips button,.cat-chip{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .bar{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px))}
 .tabbar{padding-left:max(8px,env(safe-area-inset-left,0px));padding-right:max(8px,env(safe-area-inset-right,0px))}

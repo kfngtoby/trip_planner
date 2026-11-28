@@ -1,11 +1,11 @@
 // Caches the app so it opens without signal (e.g. on a train in Japan).
-// Deploy: bump V here AND the ?v= ids in index.html (same value), e.g. with: sed -i 's/53-expense-xlsx/NEW/g' sw.js index.html
-const V = '53-expense-xlsx';
+// Deploy: bump V here AND the ?v= ids in index.html (same value), e.g. with: sed -i 's/54-map-cleanup/NEW/g' sw.js index.html
+const V = '54-map-cleanup';
 const VERSION = 'trips-v' + V;
 const q = f => f + '?v=' + V;
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', q('style.css'), q('ios.css'),
   ...['locale', 'seed', 'seed-research', 'store', 'fashion-catalog', 'places', 'reco', 'fx', 'receipt', 'locate', 'splitter',
-    'firebase-config', 'sync', 'ai', 'discovery', 'csv', 'xlsx', 'app', 'slowpoke'].map(n => q(n + '.js'))];
+    'firebase-config', 'sync', 'ai', 'discovery', 'csv', 'xlsx', 'map-enhancements', 'app', 'slowpoke'].map(n => q(n + '.js'))];
 const OPTIONAL = ['exceljs.min.js', 'slowpoke.png', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'];
