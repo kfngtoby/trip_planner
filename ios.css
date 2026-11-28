@@ -1,4 +1,4 @@
-/* Low-CPU iOS standalone PWA, MapLibre WebGL docked spot card, and Find Nearby cleanup */
+/* Low-CPU iOS standalone PWA, MapLibre WebGL docked spot card, Slowpoke preloader, and Find Nearby cleanup */
 html,body{overscroll-behavior-y:none}
 a,button,.btn,label,summary,[role="tab"],[role="button"],.day-head,.chip,.trip-link,.back,.pill{touch-action:manipulation}
 #map{touch-action:none}
@@ -14,6 +14,12 @@ button,.btn,.tabbar a,.day-head,.stop,.day-chips button,.cat-chip{-webkit-user-s
 /* Docked Overview spot card: zero floating-over-pin layout thrashing */
 .spot-card.gl-dock-card{position:absolute!important;left:10px!important;right:10px!important;bottom:10px!important;top:auto!important;transform:none!important;width:auto!important;max-width:none!important;z-index:600}
 .maplibregl-ctrl-bottom-right{z-index:5}
+/* Slowpoke map preload icon + loading bar directly below the PNG */
+.map-btn.preload-btn{display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:4px 6px!important;min-width:44px;min-height:42px}
+.map-btn.preload-btn img{display:block;width:28px;height:24px;object-fit:contain;pointer-events:none}
+.map-btn.preload-btn .pl-track{display:block;width:30px;height:4px;border-radius:999px;background:rgba(0,0,0,.14);overflow:hidden}
+.map-btn.preload-btn .pl-fill{display:block;height:100%;width:0%;border-radius:999px;background:#e0528f;transition:width .16s ease,background-color .2s ease}
+.map-btn.preload-btn.done .pl-fill{background:#0a7a5c;width:100%}
 /* Remove "Not interested · Another batch" button from Find Nearby */
 button[data-disc="more"]{display:none!important}
 @media all and (display-mode:standalone){

@@ -1,12 +1,15 @@
 'use strict';
 /* Low-CPU WebGL MapLibre GL JS + OpenFreeMap vector Overview engine,
-   GPU Retina category-icon sprites, dirty-flagged persistent tab panels,
-   lazy Leaflet loader for Find Nearby, one-handed GPU zoom, and touch speedups. */
+   GPU Retina category-icon sprites, Slowpoke map tile preloader with progress bar,
+   zero-lag Day slider, dirty-flagged persistent tab panels, lazy Leaflet loader,
+   one-handed GPU zoom, and touch speedups. */
 
 const GL_STYLES = {
   light: 'https://tiles.openfreemap.org/styles/positron',
   normal: 'https://tiles.openfreemap.org/styles/liberty'
 };
+
+const PRELOAD_SLOWPOKE_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABUCAMAAABKrcKxAAAAwFBMVEVqWlwrKS7gjJsqLjMlKi9rcXMiKCyfeYWioJ/c0pnc3N1LO0Sclm+VZ3DUeItQLSZMU1igqKlKRjobHGB6iY05UlM7Rkg1PEHS1dk7OkFweoU4O0I9Q0ZLTVGLLAI9QEQA//95fIC8vsC4ysr/AAAAAP80RT8+QDpVAFV/goWHf3+yssy//7++xMX//wDzs8EAAADRmqf9/f3+8q/wsb7mqrfborD566r+ws9URk20h5QtKDCJaHN0WmVUVVX+//89OcXvAAAAQHRSTlP95f4QoBRn/v7+/vz+/v/+XBj7DRwlX1YR6SWeqZ3/6wH//w4BASz/A/8iCgT/Af4A/v7+/v7+/v39/vr+/gMFPwv9AgAACdtJREFUeNqdWdlio7gSLbHbmGA7nfTeM3dm7r6AYiQjAeb//2qqxCYwJOlbD+m2MXVU26mSBHknHz2mFPM+dJ98f/pL8uwpRY+/5D8t0Cn0VMiFkCE75r5rP3dvN3wKXGRZwWv2/P8A+PmR6azMUErOTgbQNdLZ47Io66SUKshvP2+Bz3hZFKRBlGHgB+QtADBO8YIPXlTSQ/wFmpH+LALk/8i9sBT9GrO6akI+fBKChw1rSL/Bz4pSs3Z6uTc0918D+DX34/71rNBNKIyzCpLOLYnGx/h/R3P6rJ5WTXC37IJb7jZZv0Shs6WILDF6JdS6DtGEOsj7LPgjdwMjrt9ZtWoIPOXHultiZ8QCoMgcAwAaDdNFVobf+jdv+REiIwC/eIH7H/PdPcBjfmxIj3CyTSky3pTCRHoCcHMveullv4+Aee4aBPi5qyioDc9eEafpbLNc5P/xgUG0fxlBIvCCFQva/BNzBOkvVlY+/JUwPFX+tMo28BRMEC97YB/z3F2k6S0PQDSNWAEoM845ZVWRQZgJKoTQTlOUU+BBNEFI5d3mCFhot9aLqxDq++WHDYTQ1JQCMtaCuCT27WQxtrjeZMU+C6tglk+GKk4MfwF6ZgPqVMbD+0iR+zhA3cTeMhXbmyGTv/QApUA68Vor1mRBlw57mDtJqGFd+1iaSgs1BAsPD+kf9D82hoN3mhAgb3MfXvYGYGaA5dpIddhlhh5qVwsWGZGWIrriR8p8HAHcPIj2kQXQcYQGo7tzL7qPIESZrJlgisJn0b7sFZQhO7X+6KK2U7KHMhOSc0NGouwD15kRQdnH5fO6AYjQsjFNCrShnQrtqVvrf+MaCZpIusHuIODFkr0a3oWn0zp33hAhLEeExhsAyENdrsBhd71cLtfdAbC/zQBeQPSRCT/mGw3hln+orERUvTPRRV9/ozDC7kJyNX93SaXWATh73nAS6jtWY1/JJOtKHunaQw8AKr6iXIZ/dgArAPgetrnnDSOQ/sZU71pTSzH4N0TnHem9TEIfDsoisvFFEWY6HoaPO2nZ5KSyKxqsg+p8vdjaewiMyojwz7Ac3quRtAynrcT6MQ/iqZQ4800MArjc6zfR2J0jK4l6BI7/lg6b0YFtwrgUzCQyAR779fcusjyF34Ophj0suBxpVdl0YEXBNoHinIN36PQPSi82AgYietk3eqVRNPj2SlG3FZ9+RCZAZ8D14uxoyZfrwY4DfVYVtuP7Vl3W6whePfooo0SCc2+AkxiFh8PlOnMTQsCCyUc68EdKW/dRFv8tJwuMuy9Yxtfr9T6dqO7O4RpCjaS5yKU2/2L5qKy9HFh0ufbe2O12KxDm0VmuzBplgy7463YpFFnEWjgqo3UXHeB8BkiIkK52NpH+y2EqBLtnK++1IGBZMh9wtD4c0M0VS9M0SZJYgXM1WjvpIFYB8Bu2nIWRLppymuJUgGT3JfjOYM/SHyx8QEkg7Xm1E4c+gLM+kDmVP0fAKE+tl6YoMM/b73D+kcYPnSRx9HeAg5HkDBianVoZavpAt0tKVdbj0AMzhOePAD9ScIw8PNQRJAmQJElKoYe6XEe42zA82QDER9D1CgTACDi9PCS9LQ8Oemu3O8SlIzeGSl3NcvVxAfAZusHjCxzSNHYmGfQbBzGZ1FtzcQmebcIsBkRH3Sbwf/l5h0n0sETo9J91ve2iTFb2sIcAjZVwogfA5DpEbGYCOSo1+lPSX2yO9tTfHzfqIBMVDOPZeXdgLLbVx+T/a8R0CNv6qU3PomA3NQsAexFcd8AqzBsSyiAK7w5SydMsK17ZnVA9u+No4Vdy5j8Yo/8VdkQYvTikfXc4N1mZOq9tTXpWngp5VjJ8BKABllEFD7LbRVhkuDuoX3NQJxZhYM+0ATSzAHBwwsluMAFHvJrTEJnKN9QbVh788MwWVQLWTjeoS6epaIuPe4GQtjYFvty8ZQAyEhv2sZ/QAHsLEM4s8DR+03SHFuXYlHj2lgVZwY7ko9ZEwH4iwLMA2s9SyKTBvdi4z8cAqqx4G8HMWGhFQClkJamEwAL4EGeSAIpZFS1rbOU0oMgoCDdKk/l8w3l8hGk49iHjMlxspBYeQpOSlRFDV5/QA1411y84MqEF4DYIoGcbqYyrpa7VDTWvfsflKzl/xGXi5ZaLOgA1UxfOcwjXCmsxkewbq8Lll1yojzMAdBHX8SwE9dIharWsRcz0kk8EbuJxclq4CMMiZ2S/GLnqVQMKEYdLPi9wt0f91AJ4atAqGc98DLMYFzpdO3HIhFDN8nvcTtIJn2u5yFfCcQqYcYmy7RG80qtVIQQ006ncqF/TCeOskgEaUHbiFzBtDATqD9dpwwAUC/1oANG4xUX5tz1uNj+r0noTOB+KUugt/fcARr/udzhWN8W9wEtUzeoMQvQZqpeyxjF+gzWkmNlt9JsIzAD81oWX/W9glyPtlvcRcDrHAbnJSpga9kDKjf6EqnsWA2qb8P1fdtPWUXcWUiult+cKwWWls7l+zqtjt0++P5mxSs2JzIFfXPM+1sVae0aVo9lCdurlMHjDfBuaf/GYvRqgQ8vQtJ4t9eQhXXX1UQzLF/UwasBscP09iJOsacQUhBBnxv5g2xyyaa7FnQGiju3V4/rDceoeAFw6Gz4y3GZnPOVy5fARiYOnqqnXALCQJ+2UodXzMMnYFgQpN75QteSzw6lh+Qy4WIsAVqClnkunChYXFPkpCAKvEZnoRgHkpGI5OnAFsrQhpxwKK85n6/cWNyDdqdpnTnwiiPBqwWdrRaV1up6o9EsFYtIvwirIVwDoxED3SazNiqQYpwZkPdhIIvwhjq+ThwTdw7gLAOrHdCjROP2PmlhYEEUm07rcYAn8NcSjAZIr5q9cEj3m5vR23wxlkjb9O1IIgSPsJs2RvaMBRFjep7VbKOLqXzAMMJpa1ZZbN2mOfiPjPgISCQsnsNVrLiw6n6lGaSsTBgQhkYfEpn70eWcpD2Oz/Hbdghtu3rSY5RpIskeDSnmx5X9i/RB7BdcNY95p7YLCavqs5lM2SB5j+QhHRXS9Ea4vn9wHUieAiz+2r9wE9tXmxbWmC8E+vEmldBN1txt3h/+9fsZUVTHvmY4JXf8NAAxFECsItYPp6mjcm7FqOLiPZu1+WAPHqAb9leftbQvMiP0UfP3aX416wfH0yLprmmgshEKMnIyc0Gt1f339stRuOAbmdGr7Vz0G1BQU5rokmXECco77eHvHbayN4U6p4N58TC5eJ3XNlyI4UNL777vuvTs7bAcDbjmSbGEvvKsp3Gt5byrfBpiBeXHIJ99IyrIQKu8pf9e9LLzjN0cvbjC1OqLVSaMwL9+1+vcCYDACzHfGMONjLNiPfp7n771W/hO0pz79btAfbgAAAABJRU5ErkJggg==';
 
 /* 1. Keep seed-research.js spots strictly as Backup spots. */
 (function sanitizeResearchPatches() {
@@ -145,7 +148,84 @@ if (typeof saveDb === 'function') {
   };
 }
 
-/* 6. Low-CPU WebGL MapLibre GL JS Overview Map Engine + GPU Retina Category Icon Sprites. */
+/* 6. Low-CPU Map Tile Preloader (caches OpenFreeMap vector tiles z=11..14 for all trip spots). */
+let preloadingMap = false;
+function lonLatToTile(lon, lat, z) {
+  const n = 1 << z;
+  const x = Math.floor(((lon + 180) / 360) * n);
+  const rad = (lat * Math.PI) / 180;
+  const y = Math.floor(((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n);
+  return [x, y];
+}
+
+async function preloadTripTiles() {
+  if (preloadingMap) return;
+  const btn = $('#preload-map'), fill = btn?.querySelector('.pl-fill');
+  const tr = trip();
+  if (!tr || !btn || !fill) return;
+  const spots = (tr.spots || []).filter(s => !s.backup && hasCoords(s));
+  if (!spots.length) return;
+
+  preloadingMap = true;
+  btn.classList.remove('done');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  fill.style.width = '6%';
+
+  try {
+    const styleSrc = glMap?.getStyle?.()?.sources?.openmaptiles?.url || 'https://tiles.openfreemap.org/planet';
+    const tjRes = await fetch(styleSrc);
+    if (!tjRes.ok) throw Error('tilejson');
+    const tj = await tjRes.json();
+    const tmpl = tj?.tiles?.[0];
+    if (!tmpl) throw Error('no-tiles');
+
+    const keys = new Set();
+    for (const s of spots) {
+      for (const z of [11, 12, 13, 14]) {
+        const [x, y] = lonLatToTile(s.lon, s.lat, z);
+        keys.add(`${z}/${x}/${y}`);
+      }
+    }
+    const urls = [...keys].map(k => {
+      const [z, x, y] = k.split('/');
+      return tmpl.replace('{z}', z).replace('{x}', x).replace('{y}', y);
+    });
+
+    const cache = 'caches' in window ? await caches.open('tiles-gl-v1').catch(() => null) : null;
+    let done = 0;
+    const total = urls.length || 1;
+    let idx = 0;
+    const worker = async () => {
+      while (idx < urls.length) {
+        const u = urls[idx++];
+        try {
+          const hit = cache ? await cache.match(u) : null;
+          if (!hit) {
+            const res = await fetch(u);
+            if (res.ok && cache) await cache.put(u, res.clone());
+          }
+        } catch {}
+        done++;
+        fill.style.width = Math.max(8, Math.round((done / total) * 100)) + '%';
+      }
+    };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    fill.style.width = '100%';
+    btn.classList.remove('loading');
+    btn.classList.add('done');
+    toast(typeof discoveryLabel === 'function' ? discoveryLabel(`Preloaded ${total} map tiles ✓`, `已預載 ${total} 個地圖區塊 ✓`) : `Preloaded ${total} map tiles ✓`);
+  } catch {
+    fill.style.width = '0%';
+    btn.classList.remove('loading');
+    toast(typeof discoveryLabel === 'function' ? discoveryLabel('Preload needs internet connection', '預載地圖需要網路連線') : 'Preload needs internet connection');
+  } finally {
+    preloadingMap = false;
+    btn.disabled = false;
+  }
+}
+
+/* 7. Low-CPU WebGL MapLibre GL JS Overview Map Engine + GPU Retina Category Icon Sprites. */
 let glMap = null, glReady = false, glStyleKey = 'light', glUserPos = null;
 const glSpriteCache = new Map();
 const origRenderMapTab = typeof renderMapTab === 'function' ? renderMapTab : null;
@@ -526,7 +606,16 @@ window.renderMapTab = function() {
   $('#view').innerHTML = `
     <div class="map-shell">
       <div id="map" aria-label="${t('Interactive trip map')}"></div>
-      <div class="map-ctrls"><button id="fit-map" class="map-btn">${t('Fit all')}</button><button id="route-toggle" class="map-btn route-toggle" type="button" role="switch" aria-checked="false" aria-pressed="false" aria-label="${t('Numbered route')}"><span class="rt-ico" aria-hidden="true">1·2·3</span></button><button id="map-style" class="map-btn" type="button"></button><button id="locate" class="map-btn" aria-label="${t('Show my location')}">⌖</button></div>
+      <div class="map-ctrls">
+        <button id="fit-map" class="map-btn">${t('Fit all')}</button>
+        <button id="route-toggle" class="map-btn route-toggle" type="button" role="switch" aria-checked="false" aria-pressed="false" aria-label="${t('Numbered route')}"><span class="rt-ico" aria-hidden="true">1·2·3</span></button>
+        <button id="map-style" class="map-btn" type="button"></button>
+        <button id="locate" class="map-btn" aria-label="${t('Show my location')}">⌖</button>
+        <button id="preload-map" class="map-btn preload-btn" type="button" aria-label="Preload map tiles for all days" title="Preload map tiles">
+          <img src="${PRELOAD_SLOWPOKE_URI}" alt="" width="28" height="24">
+          <span class="pl-track" aria-hidden="true"><i class="pl-fill"></i></span>
+        </button>
+      </div>
       <div id="route-panel" class="route-panel" hidden></div>
       <p id="map-status" class="map-status" role="status"></p>
       <div id="spot-card" class="spot-card gl-dock-card" role="dialog" aria-label="${t('Place description')}" hidden></div>
@@ -549,16 +638,16 @@ window.renderMapTab = function() {
     if (b.dataset.week) { if (mapDay === b.dataset.week) return; mapDay = b.dataset.week; reco.showAll = false; renderWeekBar(); refreshPlaces(true); return; }
     mapDay = sliderDayAt(tr, +b.dataset.pos); reco.showAll = false; updateSliderMarks(); refreshPlaces(true);
   };
-  let slTimer = 0;
+  /* Zero-lag Day slider: only update label + GPU pins during drag; rebuild list + fit map on release. */
   $('#week-bar').oninput = e => {
     if (e.target.id !== 'day-range') return;
     const pos = snapPos(tr, +e.target.value); mapDay = sliderDayAt(tr, pos);
     updateSliderMarks();
     glSyncSources(false);
-    clearTimeout(slTimer);
-    slTimer = setTimeout(() => refreshPlaces(false), 80);
   };
-  $('#week-bar').onchange = e => { if (e.target.id === 'day-range') fitMap(); };
+  $('#week-bar').onchange = e => {
+    if (e.target.id === 'day-range') refreshPlaces(true);
+  };
   wireReco($('#fashion-guide'), tr);
   $('#fashion-guide').onclick = e => {
     const b = e.target.closest('button'); if (!b) return;
@@ -581,6 +670,7 @@ window.renderMapTab = function() {
     const b = e.target.closest('[data-open-place]'); if (b) openSpot(b.dataset.openPlace);
   };
   $('#fit-map').onclick = () => fitMap();
+  $('#preload-map').onclick = preloadTripTiles;
   $('#locate').onclick = () => {
     if (!navigator.geolocation) { toast(t('Location unavailable')); return; }
     navigator.geolocation.getCurrentPosition(pos => {
@@ -673,7 +763,7 @@ window.renderMapTab = function() {
   if (pendingFocus) { const id = pendingFocus; pendingFocus = null; setTimeout(() => openSpot(id), 200); }
 };
 
-/* 7. Dirty-flagged persistent tab panels: zero DOM rebuilds when switching unchanged tabs. */
+/* 8. Dirty-flagged persistent tab panels: zero DOM rebuilds when switching unchanged tabs. */
 let mountedTripId = null, mountedTabs = { map: false, days: false, expenses: false };
 window.destroyMap = function(force = false) {
   if (!force && mountedTripId && $('#trip-panels')) {
@@ -766,7 +856,7 @@ window.addEventListener('DOMContentLoaded', () => {
   };
 });
 
-/* 8. Clean unused places sheet & legend button. */
+/* 9. Clean unused places sheet & legend button. */
 function cleanUnusedSheet() {
   const tr = trip();
   const unused = getUnusedPlannedSpots(tr);
