@@ -1,6 +1,6 @@
 'use strict';
 /* Low-CPU WebGL MapLibre GL JS + OpenFreeMap vector Overview engine,
-   GPU Retina category-icon sprites, automatic Slowpoke map tile preloader with progress bar,
+   GPU Retina category-icon sprites, centered automatic Slowpoke preloader overlay,
    zero-lag Day slider, dirty-flagged persistent tab panels, lazy Leaflet loader,
    one-handed GPU zoom, and touch speedups. */
 
@@ -9,7 +9,7 @@ const GL_STYLES = {
   normal: 'https://tiles.openfreemap.org/styles/liberty'
 };
 
-const PRELOAD_SLOWPOKE_URI = 'data:image/png;base64,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';
+const PRELOAD_SLOWPOKE_URI = 'data:image/png;base64,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';
 
 /* 1. Keep seed-research.js spots strictly as Backup spots. */
 (function sanitizeResearchPatches() {
@@ -148,7 +148,7 @@ if (typeof saveDb === 'function') {
   };
 }
 
-/* 6. Automatic Low-CPU Map Tile Preloader (caches OpenFreeMap vector tiles z=11..14 on first load). */
+/* 6. Centered Automatic Slowpoke Map Tile Preloader (appears while loading, disappears when done). */
 let preloadingMap = false, autoPreloadedTripId = null;
 function lonLatToTile(lon, lat, z) {
   const n = 1 << z;
@@ -158,20 +158,26 @@ function lonLatToTile(lon, lat, z) {
   return [x, y];
 }
 
-async function preloadTripTiles(opts = {}) {
-  const silent = !!opts.silent;
+function hidePreloadOverlay(ov, delay = 280) {
+  if (!ov) return;
+  setTimeout(() => {
+    ov.classList.add('fading');
+    setTimeout(() => { ov.hidden = true; ov.classList.remove('fading', 'done'); }, 290);
+  }, delay);
+}
+
+async function preloadTripTiles() {
   if (preloadingMap) return;
-  const btn = $('#preload-map'), fill = btn?.querySelector('.pl-fill');
+  const ov = $('#preload-overlay'), fill = ov?.querySelector('.pl-fill');
   const tr = trip();
-  if (!tr || !btn || !fill) return;
+  if (!tr || !ov || !fill) return;
   const spots = (tr.spots || []).filter(s => !s.backup && hasCoords(s));
-  if (!spots.length) return;
+  if (!spots.length) { ov.hidden = true; return; }
 
   preloadingMap = true;
-  btn.classList.remove('done');
-  btn.classList.add('loading');
-  btn.disabled = true;
-  fill.style.width = '6%';
+  ov.hidden = false;
+  ov.classList.remove('done', 'fading');
+  fill.style.width = '10%';
 
   try {
     const styleSrc = glMap?.getStyle?.()?.sources?.openmaptiles?.url || 'https://tiles.openfreemap.org/planet';
@@ -208,25 +214,17 @@ async function preloadTripTiles(opts = {}) {
           }
         } catch {}
         done++;
-        fill.style.width = Math.max(8, Math.round((done / total) * 100)) + '%';
+        fill.style.width = Math.max(12, Math.round((done / total) * 100)) + '%';
       }
     };
     await Promise.all([worker(), worker(), worker(), worker()]);
     fill.style.width = '100%';
-    btn.classList.remove('loading');
-    btn.classList.add('done');
-    if (!silent) {
-      toast(typeof discoveryLabel === 'function' ? discoveryLabel(`Preloaded ${total} map tiles ✓`, `已預載 ${total} 個地圖區塊 ✓`) : `Preloaded ${total} map tiles ✓`);
-    }
+    ov.classList.add('done');
+    hidePreloadOverlay(ov, 320);
   } catch {
-    fill.style.width = '0%';
-    btn.classList.remove('loading');
-    if (!silent) {
-      toast(typeof discoveryLabel === 'function' ? discoveryLabel('Preload needs internet connection', '預載地圖需要網路連線') : 'Preload needs internet connection');
-    }
+    hidePreloadOverlay(ov, 100);
   } finally {
     preloadingMap = false;
-    btn.disabled = false;
   }
 }
 
@@ -608,6 +606,7 @@ window.renderMapTab = function() {
   if (mapDay !== 'all' && mapDay !== 'none' && !tr.days.some(d => d.id === mapDay) && !(/^w\d+$/.test(mapDay) && +mapDay.slice(1) < weekCount(tr))) mapDay = 'all';
   if (glMap) { try { glMap.remove(); } catch {} glMap = null; glReady = false; }
 
+  const showInitOverlay = autoPreloadedTripId !== tr.id;
   $('#view').innerHTML = `
     <div class="map-shell">
       <div id="map" aria-label="${t('Interactive trip map')}"></div>
@@ -616,10 +615,10 @@ window.renderMapTab = function() {
         <button id="route-toggle" class="map-btn route-toggle" type="button" role="switch" aria-checked="false" aria-pressed="false" aria-label="${t('Numbered route')}"><span class="rt-ico" aria-hidden="true">1·2·3</span></button>
         <button id="map-style" class="map-btn" type="button"></button>
         <button id="locate" class="map-btn" aria-label="${t('Show my location')}">⌖</button>
-        <button id="preload-map" class="map-btn preload-btn" type="button" aria-label="Preload map tiles for all days" title="Preload map tiles">
-          <img src="${PRELOAD_SLOWPOKE_URI}" alt="" width="28" height="24">
-          <span class="pl-track" aria-hidden="true"><i class="pl-fill"></i></span>
-        </button>
+      </div>
+      <div id="preload-overlay" class="preload-overlay" role="status" aria-live="polite" ${showInitOverlay ? '' : 'hidden'}>
+        <img src="${PRELOAD_SLOWPOKE_URI}" alt="Preloading map" width="108" height="94">
+        <span class="pl-track" aria-hidden="true"><i class="pl-fill" style="width:${showInitOverlay ? '6%' : '0%'}"></i></span>
       </div>
       <div id="route-panel" class="route-panel" hidden></div>
       <p id="map-status" class="map-status" role="status"></p>
@@ -675,7 +674,6 @@ window.renderMapTab = function() {
     const b = e.target.closest('[data-open-place]'); if (b) openSpot(b.dataset.openPlace);
   };
   $('#fit-map').onclick = () => fitMap();
-  $('#preload-map').onclick = () => preloadTripTiles({ silent: false });
   $('#locate').onclick = () => {
     if (!navigator.geolocation) { toast(t('Location unavailable')); return; }
     navigator.geolocation.getCurrentPosition(pos => {
@@ -731,7 +729,7 @@ window.renderMapTab = function() {
     glSyncSources(true);
     if (autoPreloadedTripId !== tr.id) {
       autoPreloadedTripId = tr.id;
-      setTimeout(() => preloadTripTiles({ silent: true }), 800);
+      preloadTripTiles();
     }
   });
 
